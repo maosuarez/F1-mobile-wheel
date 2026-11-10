@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>F1 Mundial</title>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud" hidden>
+    <div class="hud-speed"><span data-testid="hud-speed">0</span><small>km/h</small></div>
+    <div class="hud-times">
+      <div>Vuelta <span data-testid="hud-lap">1</span></div>
+      <div>Tiempo <span data-testid="hud-laptime">-:--.---</span></div>
+      <div>Última <span data-testid="hud-last">-:--.---</span></div>
+      <div>Mejor <span data-testid="hud-best">-:--.---</span></div>
+      <div>Delta <span data-testid="hud-delta"></span></div>
+    </div>
+  </div>
+  <div id="overlay-start" class="overlay" data-testid="overlay-start" hidden>Pulsa una tecla para empezar</div>
+  <div id="overlay-pause" class="overlay" data-testid="overlay-pause" hidden>Pausa</div>
+  <div id="overlay-error" class="overlay error" data-testid="overlay-error" hidden></div>
+  <div id="overlay-loading" class="overlay">Cargando…</div>
+  <pre id="debug-panel" data-testid="debug-panel" hidden></pre>
+  <script type="module" src="/src/host/main.ts"></script>
+</body>
+</html>
