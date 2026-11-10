@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Language: es
+  All artifacts must be written in es.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Proyecto: F1 Mobile Wheel (MVP de ~1 día). Contexto completo en context.md y docs/vision.md; no duplicarlo en los artefactos, solo referenciarlo.
+  Stack: Vite + TypeScript + Three.js vanilla, física propia en src/sim (pura, sin DOM), relay FastAPI, tests Vitest + Playwright.
+  Alcance por bloques 1–6 de context.md. Un change = un bloque (o parte de uno). Prioridad: jugable > se siente como F1 > se ve espectacular.
+  Restricciones: ver "Restricciones técnicas" de context.md (sin React, sin motores de física, sin marcas registradas, 60 fps en GPU integrada).
+
+rules:
+  proposal:
+    - Referenciar el bloque de context.md al que pertenece el change.
+    - Declarar explícitamente qué queda fuera del alcance (no adelantar bloques futuros).
+    - Máximo 300 palabras.
+  design:
+    - Solo decisiones no evidentes; no repetir context.md.
+    - Fijar rutas de archivos, firmas de funciones/tipos y constantes en src/shared/config.ts para que el implementador no deba decidir arquitectura.
+  specs:
+    - Cada requirement con al menos un scenario verificable (numérico cuando sea física o rendimiento).
+  tasks:
+    - "Pensadas para que las ejecute un modelo menos potente sin contexto previo (Opus o Sonnet): autocontenidas, ordenadas, de 15–45 min."
+    - Cada tarea indica archivos a tocar, criterio de aceptación y comando de verificación (npx vitest run, etc.).
+    - Última tarea del change - tests en verde, comprobación webapp-testing si toca navegador, revisión code-review-graph y commit Conventional Commits.
+
+operations:
+  apply:
+    guidance:
+      - Seguir tasks.md al pie de la letra; si una tarea exige una decisión de diseño no cubierta, detenerse y reportarla en vez de improvisar.
+      - No modificar specs ni design; si están mal, volver a Fable para /opsx:update.
+      - Resumen final ≤5 líneas.
+  archive:
+    guidance:
+      - Archivar solo con tests en verde y commit del bloque hecho.

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.venv/
+out/
+tools/track/.cache/
+__pycache__/
+.env
+*.log
