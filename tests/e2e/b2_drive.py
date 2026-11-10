@@ -1,4 +1,4 @@
-# E2E del bloque 2: arranque, teclado, pausa, vuelta con piloto de referencia, persistencia y consola limpia.
+# E2E del bloque 2 (adaptado a b3: emparejamiento + Enter + cuenta atrás): arranque, teclado, pausa, vuelta con piloto de referencia, persistencia y consola limpia.
 import re
 import sys
 import time
@@ -35,17 +35,21 @@ def main():
 
         # (a) primer fotograma
         page.goto(BASE + "/?debug=1")
-        page.wait_for_function("window.__f1 && window.__f1.snapshot().gameState === 'ready'", timeout=30000)
+        page.wait_for_function("window.__f1 && window.__f1.snapshot().gameState === 'pairing'", timeout=30000)
         page.wait_for_timeout(500)
         s = snap(page)
         track_len = page.evaluate("fetch('/track/interlagos.json').then(r=>r.json()).then(j=>j.length_m)")
         check("a: velocidad 0", s["speedKmh"] == 0, str(s["speedKmh"]))
         check("a: s = length-20", abs(s["s"] - (track_len - 20)) <= 1, f"s={s['s']:.2f} len={track_len}")
-        check("a: aviso de inicio visible", page.locator('[data-testid="overlay-start"]').is_visible()
-              and "Pulsa una tecla para empezar" in page.locator('[data-testid="overlay-start"]').inner_text())
+        check("a: pantalla de emparejamiento visible", page.locator('[data-testid="pairing"]').is_visible()
+              and "Enter" in page.locator('[data-testid="pairing"]').inner_text())
         page.screenshot(path="out/b2_grid.png")
 
-        # (b) acelerar 3 s
+        # (b) Enter -> cuenta atrás con teclado -> acelerar 3 s
+        page.keyboard.press("Enter")
+        page.wait_for_function("window.__f1.snapshot().gameState === 'countdown'", timeout=5000)
+        check("b: cuenta atrás visible", page.locator('[data-testid="countdown"]').is_visible())
+        page.wait_for_function("window.__f1.snapshot().gameState === 'racing'", timeout=10000)
         page.keyboard.down("ArrowUp")
         # SwiftShader va lento: se espera a 3 s de tiempo de simulación, no de reloj
         page.wait_for_function("window.__f1.snapshot().simTimeS >= 3", timeout=120000)
@@ -103,7 +107,7 @@ def main():
 
         # (e) persistencia
         page.goto(BASE + "/?debug=1")
-        page.wait_for_function("window.__f1 && window.__f1.snapshot().gameState === 'ready'", timeout=30000)
+        page.wait_for_function("window.__f1 && window.__f1.snapshot().gameState === 'pairing'", timeout=30000)
         txt = page.locator('[data-testid="hud-best"]').inner_text()
         s = snap(page)
         check("e: hud-best muestra la mejor vuelta", re.match(r"^\d:\d\d\.\d{3}$", txt) is not None, txt)
@@ -112,7 +116,7 @@ def main():
 
         # (f) sin debug
         page.goto(BASE + "/")
-        page.wait_for_selector('[data-testid="overlay-start"]:not([hidden])', timeout=30000)
+        page.wait_for_selector('[data-testid="pairing"]:not([hidden])', timeout=30000)
         check("f: window.__f1 indefinido sin debug", page.evaluate("typeof window.__f1") == "undefined")
 
         browser.close()

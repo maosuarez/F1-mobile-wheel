@@ -5,6 +5,8 @@ export interface DebugSnapshot {
   lap: number; lapTimeS: number; lastLapS: number | null; lastLapValid: boolean; bestLapS: number | null; deltaS: number | null;
   fps: number; drawCalls: number; triangles: number; maxDrawCalls: number; maxTriangles: number; dpr: number;
   wallHits: number; simTimeS: number;
+  room: string | null; wheelLink: string; rttMs: number | null;
+  inputApplied: { steer: number; thr: number; brk: number; ers: boolean }; pauseReason: string | null;
 }
 
 // Expone window.__f1 (solo lectura) únicamente con ?debug=1

@@ -4,3 +4,6 @@ scipy
 pandas
 matplotlib
 playwright
+fastapi
+uvicorn[standard]
+websockets

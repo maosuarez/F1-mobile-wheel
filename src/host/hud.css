@@ -8,3 +8,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 600; background: rgba(0,0,0,.45); text-shadow: 0 2px 6px #000; text-align: center; padding: 24px; }
 .overlay.error { background: rgba(80,0,0,.8); font-size: 22px; }
 #debug-panel { position: fixed; left: 8px; bottom: 8px; margin: 0; padding: 8px 10px; font: 12px/1.4 monospace; background: rgba(0,0,0,.65); color: #9f9; pointer-events: none; }
+/* Emparejamiento con el volante (b3) */
+.overlay.pairing { background: rgba(4,6,10,.82); }
+.pairing-card { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+.pairing-qr { background: #fff; border-radius: 8px; max-width: min(320px, 70vw); height: auto !important; }
+.pairing-info { display: flex; flex-direction: column; gap: 12px; text-align: left; max-width: 440px; }
+.pairing-label { font-size: 18px; letter-spacing: .2em; text-transform: uppercase; opacity: .7; }
+.pairing-code { font: 700 72px/1 ui-monospace, monospace; letter-spacing: .15em; }
+.pairing-hint { font-size: 16px; font-weight: 400; opacity: .85; }
+.pairing-relay { font-size: 16px; font-weight: 600; color: #ffb347; }
+.pairing-enter { font-size: 16px; font-weight: 400; opacity: .7; }
+.pairing-enter kbd { border: 1px solid #fff8; border-radius: 4px; padding: 1px 6px; font: inherit; }
+.countdown { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 800 160px/1 system-ui, sans-serif; text-shadow: 0 4px 16px #000; pointer-events: none; }
+.toast { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); padding: 10px 20px; border-radius: 6px; background: rgba(0,0,0,.75); font-size: 18px; pointer-events: none; }

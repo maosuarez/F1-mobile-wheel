@@ -14,8 +14,15 @@ import { loadBest, saveBest } from './storage';
 import { KeyboardAdapter, KeyboardInput } from './input/keyboard';
 import { AutopilotSource } from './input/autopilotSource';
 import type { InputSource } from './input/types';
+import { Autopilot } from '../sim/autopilot';
+import { decodeAtHost, encode, generateRoomCode, type TelHint } from '../shared/protocol';
+import { RoomClient } from './net/roomClient';
+import { WheelSource } from './net/wheelSource';
+import { buildTel } from './net/telemetry';
+import { PairingUi, wheelUrl, type RelayInfo } from './pairing';
 
-type GameState = 'loading' | 'ready' | 'racing' | 'paused' | 'error';
+type GameState = 'loading' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'error';
+type PauseReason = 'user' | 'hidden' | 'wheelLost';
 
 const params = new URLSearchParams(window.location.search);
 const debug = params.get('debug') === '1';
@@ -25,18 +32,29 @@ const timescale = debug && Number.isFinite(tsRaw) && tsRaw >= 1 ? Math.min(16, t
 
 const $ = (id: string) => document.getElementById(id)!;
 let state: GameState = 'loading';
+let pauseReason: PauseReason | null = null;
 
 function setState(s: GameState): void {
   state = s;
   $('overlay-loading').hidden = s !== 'loading';
-  $('overlay-start').hidden = s !== 'ready';
-  $('overlay-pause').hidden = s !== 'paused';
+  $('overlay-pairing').hidden = s !== 'pairing';
+  $('overlay-pause').hidden = !(s === 'paused' && pauseReason !== 'wheelLost');
+  $('overlay-wheel-lost').hidden = !(s === 'paused' && pauseReason === 'wheelLost');
   $('overlay-error').hidden = s !== 'error';
 }
 
 function showError(e: unknown): void {
   $('overlay-error').textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
   setState('error');
+}
+
+async function fetchRelayInfo(): Promise<RelayInfo | null> {
+  try {
+    const r = await fetch('/api/info');
+    if (!r.ok) return null;
+    const j = await r.json() as Partial<RelayInfo>;
+    return { lan_ips: Array.isArray(j.lan_ips) ? j.lan_ips : [], public_url: typeof j.public_url === 'string' ? j.public_url : null };
+  } catch { return null; }
 }
 
 async function start(): Promise<void> {
@@ -57,9 +75,38 @@ async function start(): Promise<void> {
   const stepper = new FixedStepper(config.sim.dt, config.sim.maxSubSteps);
   const adapter = new KeyboardAdapter(window, {
     onRecenter: () => { if (state === 'racing') { sim.recenter(); syncPrev(); } },
-    onPause: () => { if (state === 'racing') pause(); else if (state === 'paused') resume(); },
+    onPause: () => togglePause(),
   });
-  const source: InputSource = useAutopilot ? new AutopilotSource(track) : new KeyboardInput(adapter);
+  const keyboardSource = new KeyboardInput(adapter);
+  let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
+
+  // Volante: sala del relay (no se abre con ?autopilot=1)
+  const ui = new PairingUi();
+  const nowMs = () => performance.now();
+  const wheel = useAutopilot ? null : new WheelSource(config, nowMs);
+  const room = useAutopilot ? null : generateRoomCode();
+  let client: RoomClient | null = null;
+  if (wheel && room) {
+    const port = window.location.port;
+    const showRoom = (info: RelayInfo | null) => {
+      const { url, mode } = wheelUrl(window.location, info, room);
+      ui.setRoom(room, url, mode, port);
+    };
+    showRoom(null);
+    let everOpen = false;
+    client = new RoomClient('host', room);
+    client.onStatus = (st) => {
+      if (st === 'open') { everOpen = true; ui.setRelayDown(false); }
+      else if (st === 'closed' && !everOpen) ui.setRelayDown(true);
+    };
+    client.onMessage = (raw) => {
+      const m = decodeAtHost(raw);
+      if (m && m.t !== 'ping') wheel.handleMessage(m);
+    };
+    client.connect();
+    void fetchRelayInfo().then((info) => { if (info) showRoom(info); else ui.setRelayDown(true); });
+  }
+  const refPilot = debug && wheel ? new Autopilot(track) : null;     // sugerencia `dbg` del tel
 
   let lastInput: DriverInput = NEUTRAL_INPUT;
   let wallHits = 0, maxDraw = 0, maxTris = 0, fps = 60, dpr = renderer.getPixelRatio();
@@ -71,15 +118,63 @@ async function start(): Promise<void> {
   };
   syncPrev();
 
-  const pause = () => { if (state === 'racing') setState('paused'); };
-  const resume = () => { if (state === 'paused') { stepper.reset(); setState('racing'); } };
-  const begin = () => { if (state === 'ready') { stepper.reset(); setState('racing'); } };
+  let countdownEndMs = 0;
+  let pausedFrom: 'racing' | 'countdown' = 'racing';
+  const startCountdown = () => { countdownEndMs = nowMs() + config.race.countdownS * 1000; setState('countdown'); };
+  const pause = (reason: PauseReason) => {
+    if (state !== 'racing' && state !== 'countdown') return;
+    pausedFrom = state;
+    pauseReason = reason;
+    setState('paused');
+  };
+  const resume = () => {
+    if (state !== 'paused') return;
+    pauseReason = null;
+    if (pausedFrom === 'countdown') startCountdown();
+    else { stepper.reset(); setState('racing'); }
+  };
+  // Solo la pausa por volante perdido se reanuda sola; las demás, con P o el botón del volante
+  const togglePause = () => {
+    if (state === 'racing' || state === 'countdown') pause('user');
+    else if (state === 'paused' && pauseReason !== 'wheelLost') resume();
+  };
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'F3') { e.preventDefault(); panel.toggle(); return; }
-    if (state === 'ready' && !e.metaKey && !e.ctrlKey && !e.altKey) begin();
+    if (state === 'pairing' && (e.code === 'Enter' || e.code === 'NumpadEnter')) { source = keyboardSource; startCountdown(); }
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause('hidden'); });
+
+  // Estado del volante: toma de control, eventos de interfaz, pérdida y reanudación
+  const updateWheel = () => {
+    if (!wheel) return;
+    for (const k of wheel.takeUiEvents()) if (k === 'pause' && source === wheel) togglePause();
+    if (source !== wheel) wheel.takeCommands();                 // órdenes sin efecto si no controla el volante
+    const link = wheel.link();
+    if (link === 'ok') {
+      if (state === 'pairing') { source = wheel; startCountdown(); }
+      else if (source !== wheel && (state === 'countdown' || state === 'racing' || state === 'paused')) {
+        source = wheel; ui.toast('Volante conectado');
+      } else if (state === 'paused' && pauseReason === 'wheelLost') resume();
+    } else if (link === 'lost' && source === wheel) pause('wheelLost');
+  };
+
+  // Telemetría a net.telHz con temporizador propio (independiente del render), solo con volante conectado
+  const sendTelemetry = () => {
+    if (!wheel || !client) return;
+    const link = wheel.link();
+    if (link !== 'ok' && link !== 'stale') return;
+    const now = nowMs();
+    const warn = state === 'countdown' ? String(Math.max(1, Math.ceil((countdownEndMs - now) / 1000)))
+      : state === 'paused' ? 'PAUSA' : '';
+    let dbg: TelHint | undefined;
+    if (refPilot) {
+      const r = refPilot.update(sim.state);
+      dbg = { steer: r.input.steer, thr: r.input.throttle, brk: r.input.brake, gear: 1 };
+    }
+    const e = wheel.echo();
+    client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg })));
+  };
   window.addEventListener('resize', () => resize(renderer, camera));
   resize(renderer, camera);
 
@@ -91,12 +186,21 @@ async function start(): Promise<void> {
         lap: t.lap, lapTimeS: t.lapTimeS, lastLapS: t.lastLapS, lastLapValid: t.lastLapValid, bestLapS: t.bestLapS, deltaS: t.deltaS,
         fps, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
         maxDrawCalls: maxDraw, maxTriangles: maxTris, dpr, wallHits, simTimeS: sim.state.t,
+        room, wheelLink: wheel ? wheel.link() : 'none', rttMs: wheel ? wheel.lastRttMs() : null,
+        inputApplied: { steer: lastInput.steer, thr: lastInput.throttle, brk: lastInput.brake, ers: lastInput.ers },
+        pauseReason,
       };
     });
   }
 
-  setState('ready');
-  if (useAutopilot) begin();
+  if (client) {
+    // También evalúa el enlace del volante aquí: la pausa/reanudación no depende del render (updateWheel es idempotente)
+    const telTimer = setInterval(() => { updateWheel(); sendTelemetry(); }, 1000 / config.net.telHz);
+    window.addEventListener('pagehide', () => { clearInterval(telTimer); client?.close(); });
+  }
+
+  if (useAutopilot) { stepper.reset(); setState('racing'); }
+  else setState('pairing');
 
   const dt = config.sim.dt;
   let lastT = performance.now();
@@ -105,6 +209,13 @@ async function start(): Promise<void> {
     const frameDt = Math.min((now - lastT) / 1000, 1);
     lastT = now;
     if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
+
+    updateWheel();
+    if (state === 'countdown') {
+      const left = (countdownEndMs - nowMs()) / 1000;           // coche retenido: la simulación no avanza
+      if (left <= 0) { ui.setCountdown(null); stepper.reset(); setState('racing'); }
+      else ui.setCountdown(Math.ceil(left));
+    } else ui.setCountdown(null);
 
     let alpha = 1;
     if (state === 'racing') {
@@ -150,6 +261,7 @@ async function start(): Promise<void> {
     panel.update(now, {
       fps, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
       surface: cs.surface, gLong: cs.aLong / config.sim.g, gLat: cs.aLat / config.sim.g,
+      wheelLink: wheel ? wheel.link() : 'none', rttMs: wheel ? wheel.lastRttMs() : null,
     });
   };
   requestAnimationFrame((t) => { lastT = t; frame(t); });

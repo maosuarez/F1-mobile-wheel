@@ -70,7 +70,7 @@ export function wheelUrl(loc: { protocol: string; hostname: string; port: string
 
 - Máquina de estados ampliada: `loading → pairing → countdown → racing ⇄ paused`. Motivos de pausa: `'user' | 'hidden' | 'wheelLost'`; solo `wheelLost` se reanuda solo. `?autopilot=1` salta `pairing` y no abre WebSocket.
 - `WheelSource.read`: último `in`; si la edad > `net.inputStaleMs` → `throttle = 0`, `ers = false`; `link() = 'lost'` si la edad > `net.inputLostMs` o llegó `peer` desconectado. `seq` se reinicia al llegar `peer` conectado.
-- Telemetría: en cada fotograma, si pasaron ≥ `1000/net.telHz` ms y hay volante, `send(encode(buildTel(...)))`. `warn` durante la cuenta atrás: `"3"`, `"2"`, `"1"`; en pausa: `"PAUSA"`.
+- Telemetría: temporizador propio (`setInterval` a `1000/net.telHz` ms), independiente de los fotogramas de render, para sostener 20 Hz aunque bajen los fps; envía `encode(buildTel(...))` solo si hay volante. El temporizador se crea al conectar como host y se limpia al cerrar. `warn` durante la cuenta atrás: `"3"`, `"2"`, `"1"`; en pausa: `"PAUSA"`.
 - Con `debug=1`, `Autopilot.update(state)` se evalúa en cada envío y va en `dbg` (marcha sugerida 1 hasta el bloque 4).
 - QR con `qrcode` (`toCanvas`, 320 px). `data-testid`: `pairing`, `pairing-code`, `pairing-qr`, `pairing-hint`, `countdown`, `toast`, `overlay-wheel-lost`.
 - `DebugSnapshot` += `room`, `wheelLink`, `rttMs`, `inputApplied: { steer, thr, brk, ers }`, `pauseReason`.

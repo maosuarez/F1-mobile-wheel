@@ -17,7 +17,30 @@
       <div>Delta <span data-testid="hud-delta"></span></div>
     </div>
   </div>
-  <div id="overlay-start" class="overlay" data-testid="overlay-start" hidden>Pulsa una tecla para empezar</div>
+  <div id="overlay-pairing" class="overlay pairing" data-testid="pairing" hidden>
+    <div class="pairing-card">
+      <canvas class="pairing-qr" data-testid="pairing-qr" width="320" height="320"></canvas>
+      <div class="pairing-info">
+        <div class="pairing-label">Volante</div>
+        <div class="pairing-code" data-testid="pairing-code">----</div>
+        <div class="pairing-hint" data-testid="pairing-hint"></div>
+        <div class="pairing-relay" data-testid="pairing-relay" hidden>Volante no disponible: el relay no responde. Puedes jugar con teclado pulsando Enter.</div>
+        <div class="pairing-enter">Pulsa <kbd>Enter</kbd> para jugar con teclado</div>
+      </div>
+    </div>
+  </div>
+  <div id="overlay-wheel-lost" class="overlay pairing" data-testid="overlay-wheel-lost" hidden>
+    <div class="pairing-card">
+      <canvas class="pairing-qr" data-testid="wheel-lost-qr" width="220" height="220"></canvas>
+      <div class="pairing-info">
+        <div class="pairing-label">Volante desconectado</div>
+        <div class="pairing-code" data-testid="wheel-lost-code">----</div>
+        <div class="pairing-hint">Vuelve a abrir el volante en el celular para continuar</div>
+      </div>
+    </div>
+  </div>
+  <div id="countdown" class="countdown" data-testid="countdown" hidden></div>
+  <div id="toast" class="toast" data-testid="toast" hidden></div>
   <div id="overlay-pause" class="overlay" data-testid="overlay-pause" hidden>Pausa</div>
   <div id="overlay-error" class="overlay error" data-testid="overlay-error" hidden></div>
   <div id="overlay-loading" class="overlay">Cargando…</div>

@@ -1,6 +1,7 @@
 export interface DebugStats {
   fps: number; drawCalls: number; triangles: number; speedKmh: number; s: number; d: number;
   surface: string; gLong: number; gLat: number;
+  wheelLink: string; rttMs: number | null;
 }
 
 // Panel F3: se refresca como mucho cada 100 ms
@@ -17,6 +18,7 @@ export class DebugPanel {
     this.el.textContent =
       `fps ${st.fps.toFixed(0)}  draws ${st.drawCalls}  tris ${st.triangles}\n` +
       `v ${st.speedKmh.toFixed(0)} km/h  s ${st.s.toFixed(1)}  d ${st.d.toFixed(2)}  ${st.surface}\n` +
-      `g long ${st.gLong.toFixed(2)}  g lat ${st.gLat.toFixed(2)}`;
+      `g long ${st.gLong.toFixed(2)}  g lat ${st.gLat.toFixed(2)}\n` +
+      `volante ${st.wheelLink}  rtt ${st.rttMs === null ? '--' : st.rttMs.toFixed(0)} ms`;
   }
 }

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0c0f" />
+  <title>Volante</title>
+</head>
+<body data-state="tap">
+  <main id="wheel" class="wheel">
+    <section class="side side-left">
+      <button class="paddle" data-testid="paddle-down" type="button" aria-label="Bajar marcha"><span>−</span><small>Marcha</small></button>
+      <div class="pedal pedal-brk" data-testid="pedal-brk" aria-label="Freno"><div class="pedal-fill"></div><span class="pedal-label">FRENO</span></div>
+    </section>
+
+    <section class="center">
+      <div class="leds" data-testid="disp-leds" aria-hidden="true"></div>
+      <div class="screen">
+        <div class="cell cell-speed"><b data-testid="disp-speed">0</b><small>km/h</small></div>
+        <div class="cell cell-gear"><b data-testid="disp-gear" data-kind="n">N</b></div>
+        <div class="cell cell-side">
+          <div class="tag" data-testid="disp-drs" data-state="0">DRS</div>
+          <div class="tag tag-ot" data-testid="disp-ot" data-on="0">ADELANT.</div>
+          <div class="ers" data-testid="disp-ers" data-value="1"><i></i><span>ERS</span></div>
+        </div>
+      </div>
+      <div class="strip">
+        <span class="status" data-testid="wheel-status" data-state="tap">Toca para empezar</span>
+        <span class="warn" data-testid="disp-warn"></span>
+        <span class="flat" data-testid="flat-warning" hidden>Levanta el volante</span>
+      </div>
+      <div class="strip strip-info">
+        <span>Vuelta <b data-testid="disp-lap">–</b></span>
+        <span>Delta <b data-testid="disp-delta">—</b></span>
+        <span>RTT <b data-testid="disp-rtt">—</b></span>
+      </div>
+      <div class="buttons">
+        <button class="btn" data-testid="btn-drs" type="button">DRS</button>
+        <button class="btn" data-testid="btn-cam" type="button">CÁMARA</button>
+        <button class="btn" data-testid="btn-center" type="button">CENTRAR</button>
+        <button class="btn btn-hold" data-testid="btn-ers" type="button">ERS</button>
+        <button class="btn" data-testid="btn-pause" type="button">PAUSA</button>
+        <button class="btn btn-toggle" data-testid="btn-haptics" type="button" aria-pressed="true">VIB: SÍ</button>
+      </div>
+    </section>
+
+    <section class="side side-right">
+      <button class="paddle" data-testid="paddle-up" type="button" aria-label="Subir marcha"><span>+</span><small>Marcha</small></button>
+      <div class="pedal pedal-thr" data-testid="pedal-thr" aria-label="Acelerador"><div class="pedal-fill"></div><span class="pedal-label">ACELERA</span></div>
+    </section>
+  </main>
+
+  <div class="cover" id="cover-tap" hidden>
+    <button class="start" data-testid="tap-start" type="button">Toca para empezar</button>
+  </div>
+  <div class="cover" id="cover-noroom" hidden>
+    <p class="msg">Escanea el QR del juego para abrir el volante.</p>
+  </div>
+
+  <script type="module" src="/src/wheel/main.ts"></script>
+</body>
+</html>

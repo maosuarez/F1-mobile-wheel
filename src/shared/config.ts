@@ -15,6 +15,14 @@ export const config = {
                speedPreviewS: 0.25, throttleGain: 0.25, brakeGain: 0.35, maxSpeedMs: 95 },
   render: { maxDpr: 1.5, trackChunks: 20, fovDeg: 70, near: 0.3, far: 2500,
             chase: { distM: 7.5, heightM: 2.6, lookAheadM: 6, stiffness: 8 } },
+  // Red y emparejamiento con el volante (b3, design D4)
+  net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000 },
+  race:  { countdownS: 3 },
+  // Volante móvil (b3, design D5)
+  wheel: { steerSign: 1, rangeDeg: 60, deadzoneDeg: 1.5, curveK: 0.35, flatThreshold: 3,
+           oneEuro: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 }, sendHz: 60,
+           pedalMode: 'analog' as 'analog' | 'digital', pedalRampMs: 120,
+           haptics: { minGapMs: 80, patterns: { shift: [12], kerb: [25], grass: [40, 30, 40], limits: [120], limiter: [8] } } },
 };
 
 export type GameConfig = typeof config;
