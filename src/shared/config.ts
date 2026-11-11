@@ -26,6 +26,41 @@ export const config = {
   autopilot: { lookaheadBaseM: 8, lookaheadPerMs: 0.35, latGripUse: 0.72, brakeGripUse: 0.65,
                speedPreviewS: 0.25, throttleGain: 0.25, brakeGain: 0.35, maxSpeedMs: 95 },
   render: { maxDpr: 1.5, trackChunks: 20, fovDeg: 70, near: 0.3, far: 2500 },
+  // Calidad adaptativa (b6, design D1): baja un nivel si la media de fps < downFps durante windowS
+  quality: { downFps: 50, windowS: 3, meterFrames: 7200, softwareGl: ['SwiftShader', 'llvmpipe'] },
+  // Luz y cielo (b6, design D2). sunDir apunta hacia el sol; colores en sRGB
+  light: { exposure: 1.0, sunDir: [-0.45, 0.72, 0.38] as [number, number, number], sunColor: '#fff1dc', sunIntensity: 2.6,
+           hemiSky: '#bcd6f2', hemiGround: '#5a5440', hemiIntensity: 0.45, envIntensity: 0.55,
+           shadowExtentM: 60, shadowAheadM: 15, shadowDistM: 150, shadowNear: 1, shadowFar: 320,
+           shadowBias: -0.0004, shadowNormalBias: 0.03 },
+  sky:   { radiusM: 2000, zenith: '#3f78c4', horizon: '#c9dcec', ground: '#9fb3c2', exponent: 0.55,
+           haloColor: '#fff4dd', haloPower: 180, haloGain: 1.6, glowPower: 6, glowGain: 0.25,
+           fogNearFrac: 0.3, fogFarFrac: 0.95 },
+  // Coche visual (b6, design D3). Medidas en metros, ángulos en grados, colores sRGB de la escudería ficticia
+  carVisual: { wheelRadiusM: 0.36, tireFrontW: 0.305, tireRearW: 0.405, halfTrackM: 1.0,
+               steerWheelDeg: 120, flapOpenDeg: 35, flapRateDegS: 300,
+               tiltMaxDeg: 1.5, tiltDegPerG: 0.4, tiltTauS: 0.12,
+               colors: { primary: '#0b5d7a', accent: '#ffb000', carbon: '#16181c', number: '#f4f4f0', rim: '#b9bec6', screen: '#38e8ff' } },
+  // Superficies de pista (b6, design D4). Texturas procedurales sembradas; tamaños en px, medidas en metros
+  surfaces: { seed: 1301, texPx: 512, maxTexPx: 1024, uvMeters: 4, rubberWidthM: 3, rubberDarken: 0.15,
+              asphaltGrain: 0.14, grassVariation: 0.22, stripeLenM: 18, stripeDarken: 0.09,
+              gridSlots: 10, gridSpacingM: 8, gridOffsetM: 2.4, gridBoxLenM: 5, gridBoxWidthM: 1.6, gridLineM: 0.12 },
+  // Entorno (b6, design D5). Medidas en metros, colores sRGB; la semilla fija la colocación de árboles
+  environment: { seed: 4107, groundDropM: 0.05,
+                 stand: { moduleLenM: 12, depthM: 8, heightM: 6, steps: 4, offsetM: 4, backM: 100, spanM: 336, treeClearM: 3 },
+                 tree: { minOffM: 3, maxOffM: 60, minGapM: 3, trunkH: 3, trunkR: 0.28, crownH: 7.5, crownR: 2.6,
+                         scaleMin: 0.7, scaleMax: 1.4, trunkColor: '#4a3524', crownColors: ['#2f5a2a', '#3a6b30', '#2a4f2d', '#4a7a35'], attemptsPerTree: 40 },
+                 skyline: { segments: 96, padM: 700, baseDropM: 6, minH: 25, maxH: 90, color: '#7d95a3' },
+                 crowdPalette: ['#c0392b', '#e8e6df', '#2b6cb0', '#f1c40f', '#2d3436', '#27ae60', '#8e44ad'], crowdTexPx: 64 },
+  // Partículas de pista (b6, design D6). Velocidades en m/s, tiempos en s, tamaños en m, colores sRGB
+  particles: { dirtMinMs: 5, smokeMinMs: 16.7, smokeSlip: 0.6,
+               dirtRatePerWheel: 40, dirtRefMs: 28, smokeRatePerWheel: 30,
+               dirtLifeS: 0.6, smokeLifeS: 1.4, dirtSizeM: 0.12, smokeSizeM: 0.9, smokeGrowth: 2.5,
+               dirtUpMs: 2.5, dirtBackFrac: 0.15, dirtSpreadMs: 1.5, smokeUpMs: 0.6, smokeSpreadMs: 0.8, smokeBackFrac: 0.05,
+               dirtColor: '#5b4a33', smokeColor: '#d8d8d4', dirtAlpha: 0.9, smokeAlpha: 0.35, seed: 9173 },
+  // Posproceso (b6, design D7): bloom a media resolución y viñeta en la pasada final
+  post: { bloomStrength: 0.35, bloomRadius: 0.4, bloomThreshold: 0.9,
+          vignetteStrength: 0.3, vignetteInner: 0.45, vignetteOuter: 1.05 },
   // Sensaciones (b5, design D1)
   audio:  { masterGain: 0.6, cylindersFactor: 3, idleGain: 0.28, fullGain: 0.85, cutoffMinHz: 500, cutoffMaxHz: 5200,
             rpmCutoffBoost: 0.6, squareMix: 0.35, turboGain: 0.12, windGain: 0.35, windRefMs: 90,

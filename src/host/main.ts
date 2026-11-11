@@ -3,8 +3,12 @@ import { config } from '../shared/config';
 import { loadTrack } from '../track/load';
 import { Simulation } from '../sim/simulation';
 import { NEUTRAL_INPUT, type DriverInput } from '../sim/types';
-import { createRenderer, createScene, resize } from '../render/scene';
+import { applyQuality, createRenderer, createScene, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
+import { AdaptiveQuality, FpsMeter, QUALITY, initialQuality, type QualityLevel, type QualitySettings } from '../render/quality';
 import { buildCar } from '../render/car';
+import { TrackParticles } from '../render/particles';
+import { PostFx } from '../render/post';
+import type * as THREE from 'three';
 import { CameraRig } from '../render/cameras/rig';
 import { EngineAudio } from '../audio/engine';
 import { FxPlanner } from './net/fx';
@@ -34,6 +38,10 @@ const debug = params.get('debug') === '1';
 const useAutopilot = debug && params.get('autopilot') === '1';
 const tsRaw = Number(params.get('timescale'));
 const timescale = debug && Number.isFinite(tsRaw) && tsRaw >= 1 ? Math.min(16, tsRaw) : 1;
+// Calidad (design D1): ?quality= fija el nivel y bloquea la adaptación; ?post=0 desactiva el posproceso
+const qualityParam = params.get('quality');
+const noPost = params.get('post') === '0';
+const QUALITY_LABEL: Record<QualityLevel, string> = { high: 'alta', medium: 'media', low: 'baja', software: 'software' };
 
 const $ = (id: string) => document.getElementById(id)!;
 let state: GameState = 'loading';
@@ -70,9 +78,15 @@ async function start(): Promise<void> {
   sim.timer.setBestLap(loadBest(track.id));
 
   const canvas = $('game') as HTMLCanvasElement;
-  const renderer = createRenderer(canvas);
-  const { scene, camera } = createScene(track);
-  const car = buildCar();
+  const renderer = createRenderer(canvas, debug);
+  // Con GL por software, nivel 'software' sin adaptación salvo ?quality= (design D1)
+  const gpuName = rendererName(renderer);
+  const q0 = initialQuality(qualityParam, gpuName);
+  const gs = createScene(track, QUALITY[q0.level]);
+  const { scene, camera } = gs;
+  const carVisual = buildCar();
+  const car = carVisual.group;
+  car.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
   scene.add(car);
   const rig = new CameraRig(camera, track, config);
   const audio = new EngineAudio(config);
@@ -199,10 +213,27 @@ async function start(): Promise<void> {
     const e = wheel.echo();
     client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg })));
   };
-  window.addEventListener('resize', () => resize(renderer, camera));
-  resize(renderer, camera);
+  // Calidad adaptativa: empieza en high salvo ?quality= o GL por software, nunca vuelve a subir
+  const adaptive = new AdaptiveQuality(config.quality, q0.level, q0.locked);
+  const fpsMeter = new FpsMeter(config.quality.meterFrames);
+  const settingsFor = (l: QualityLevel): QualitySettings => ({ ...QUALITY[l], post: QUALITY[l].post && !noPost });
+  let quality = settingsFor(adaptive.level);
+  // Partículas (design D6) y posproceso (design D7) según el nivel de calidad
+  const particles = new TrackParticles(quality.particles);
+  scene.add(particles.points);
+  const post = new PostFx(renderer, scene, camera);
+  // El compositor hace varios render(): el contador de draw calls se reinicia una vez por fotograma
+  renderer.info.autoReset = false;
+  const applyAll = () => {
+    applyQuality(renderer, camera, quality, gs);
+    particles.setCapacity(quality.particles);
+    post.apply(quality);
+  };
+  window.addEventListener('resize', () => { resize(renderer, camera, quality.dpr); post.syncSize(); });
+  applyAll();
 
   if (debug) {
+    const carCost = objectCost(car);
     installDebugApi(() => {
       const c = sim.state.car, t = sim.state.timing;
       return {
@@ -215,8 +246,11 @@ async function start(): Promise<void> {
         autoShift: sim.assists.autoShift, lapValid: t.lapValid, warn: warnings.current(sim.state, sim.state.t), overheated: c.overheated,
         inputApplied: { steer: lastInput.steer, thr: lastInput.throttle, brk: lastInput.brake, ers: lastInput.ers },
         pauseReason, audio: audio.debug(), camera: rig.debug(), fxSent: { ...fxSent },
+        quality: adaptive.level, rendererName: gpuName, ...shadowStats(scene, renderer), post: quality.post,
+        particlesActive: particles.debug().active, fpsAvg: fpsMeter.avg(), fpsP5: fpsMeter.p5(),
+        carDrawCalls: carCost.drawCalls, carTriangles: carCost.triangles, envDrawCalls: objectCost(gs.env).drawCalls,
       };
-    });
+    }, canvas);
   }
 
   if (client) {
@@ -235,6 +269,15 @@ async function start(): Promise<void> {
     const frameDt = Math.min((now - lastT) / 1000, 1);
     lastT = now;
     if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
+    // Solo cuentan los fotogramas de juego activo con la pestaña visible
+    const active = (state === 'racing' || state === 'countdown') && !document.hidden;
+    if (active) fpsMeter.push(frameDt);
+    const lowered = adaptive.sample(frameDt, active);
+    if (lowered) {
+      quality = settingsFor(lowered);
+      applyAll();
+      ui.toast(`Calidad gráfica reducida a ${QUALITY_LABEL[lowered]}`);
+    }
 
     updateWheel();
     if (state === 'countdown') {
@@ -281,14 +324,19 @@ async function start(): Promise<void> {
     car.position.set(pose.x, pose.y, pose.z);
     car.rotation.order = 'YZX';
     car.rotation.set(0, pose.yaw, cs.pitch);
+    carVisual.update(cs, camDt);
     rig.update({ ...pose, pitch: cs.pitch, roll: cs.roll }, cs, camDt, sim.state.t);
+    updateScene(gs, pose.x, pose.y, pose.z, pose.yaw);
     audio.update(cs, camDt);
     if (client && source === wheel && state === 'racing') {
       const fk = fxPlanner.plan(frameEvents, cs, nowMs());
       if (fk) { client.send(encode({ t: 'fx', k: fk })); fxSent[fk]++; }
     }
 
-    renderer.render(scene, camera);
+    particles.update(cs, pose, sim.state.t);
+    particles.setView(renderer.domElement.height, camera.fov);
+    renderer.info.reset();
+    post.render();
     const info = renderer.info.render;
     maxDraw = Math.max(maxDraw, info.calls);
     maxTris = Math.max(maxTris, info.triangles);
@@ -296,7 +344,7 @@ async function start(): Promise<void> {
 
     hud.update(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift);
     panel.update(now, {
-      fps, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
+      fps, quality: adaptive.level, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
       surface: cs.surface, gLong: cs.aLong / config.sim.g, gLat: cs.aLat / config.sim.g,
       wheelLink: wheel ? wheel.link() : 'none', rttMs: wheel ? wheel.lastRttMs() : null,
     });

@@ -1,5 +1,5 @@
 export interface DebugStats {
-  fps: number; drawCalls: number; triangles: number; speedKmh: number; s: number; d: number;
+  fps: number; quality: string; drawCalls: number; triangles: number; speedKmh: number; s: number; d: number;
   surface: string; gLong: number; gLat: number;
   wheelLink: string; rttMs: number | null;
 }
@@ -16,7 +16,7 @@ export class DebugPanel {
     if (this.el.hidden || nowMs - this.last < 100) return;
     this.last = nowMs;
     this.el.textContent =
-      `fps ${st.fps.toFixed(0)}  draws ${st.drawCalls}  tris ${st.triangles}\n` +
+      `fps ${st.fps.toFixed(0)}  calidad ${st.quality}  draws ${st.drawCalls}  tris ${st.triangles}\n` +
       `v ${st.speedKmh.toFixed(0)} km/h  s ${st.s.toFixed(1)}  d ${st.d.toFixed(2)}  ${st.surface}\n` +
       `g long ${st.gLong.toFixed(2)}  g lat ${st.gLat.toFixed(2)}\n` +
       `volante ${st.wheelLink}  rtt ${st.rttMs === null ? '--' : st.rttMs.toFixed(0)} ms`;

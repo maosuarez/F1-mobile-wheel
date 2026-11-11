@@ -4,6 +4,7 @@ import raw from '../public/track/interlagos.json';
 import { parseTrackJson } from '../src/track/schema';
 import { buildTrack } from '../src/track/track';
 import { buildTrackMeshes, buildRingPositions } from '../src/track/mesh';
+import { createAsphaltTextures } from '../src/render/trackMaterials';
 import { KERB_HEIGHT_M } from '../src/track/types';
 
 const track = buildTrack(parseTrackJson(raw));
@@ -101,5 +102,30 @@ describe('Mallas dentro del presupuesto', () => {
     }
     expect(byName('start-line')).toBeDefined();
     expect(byName('ground')).toBeDefined();
+  });
+});
+
+describe('Superficies (b6)', () => {
+  it('UV finitas en todas las mallas', () => {
+    for (const mesh of meshes) {
+      const uv = mesh.geometry.getAttribute('uv');
+      expect(uv).toBeDefined();
+      const arr = uv.array as Float32Array;
+      for (let i = 0; i < arr.length; i++) expect(Number.isFinite(arr[i])).toBe(true);
+    }
+  });
+
+  it('texturas procedurales ≤ 1024 px y reproducibles', () => {
+    const mat = m.materials.road as THREE.MeshStandardMaterial;
+    for (const tex of [mat.map!, mat.roughnessMap!, (m.materials.grass as THREE.MeshStandardMaterial).map!]) {
+      const { width, height } = tex.image as { width: number; height: number };
+      expect(width).toBeLessThanOrEqual(1024);
+      expect(height).toBeLessThanOrEqual(1024);
+    }
+    const a = createAsphaltTextures(7, 64).color.image.data as Uint8Array;
+    const b = createAsphaltTextures(7, 64).color.image.data as Uint8Array;
+    const c = createAsphaltTextures(8, 64).color.image.data as Uint8Array;
+    expect(Array.from(a)).toEqual(Array.from(b));
+    expect(Array.from(a)).not.toEqual(Array.from(c));
   });
 });

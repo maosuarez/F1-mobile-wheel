@@ -3,10 +3,11 @@ import type { Track } from './types';
 import { KERB_WIDTH_M, KERB_HEIGHT_M, EDGE_LINE_M, WALL_HEIGHT_M } from './types';
 import { config } from '../shared/config';
 import { sampleAt } from './query';
+import { createTrackMaterials, type TrackMaterials } from '../render/trackMaterials';
 
 export interface TrackMeshes {
   group: THREE.Group;
-  materials: { road: THREE.Material; grass: THREE.Material; wall: THREE.Material };
+  materials: TrackMaterials;
   chunks: number;
   triangles: number;
 }
@@ -17,6 +18,7 @@ const GRASS_INNER_DROP_M = 0.01;
 const RING_VERTS = 6;           // asfalto (2) + franjas (4)
 const KERB_VERTS = 4;           // kR_out, kR_in, kL_in, kL_out
 
+const UVM = config.surfaces.uvMeters;   // metros por repetición de textura
 const C_ASPHALT = new THREE.Color('#2b2b2e');
 const C_LINE = new THREE.Color('#e8e8e8');
 const C_KERB_RED = new THREE.Color('#c8102e');
@@ -111,12 +113,27 @@ function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     base.push(B.count);
     const p = buildRingPositions(t, r);
     const cols = [C_ASPHALT, C_ASPHALT, C_LINE, C_LINE, C_LINE, C_LINE];
-    const us = [0, 1, 0, EDGE_LINE_M / width(f), 1 - EDGE_LINE_M / width(f), 1];
-    for (let k = 0; k < RING_VERTS; k++) B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, cols[k], us[k], f.s / 10);
+    const ds = [-f.wr, f.wl, -f.wr, -f.wr + EDGE_LINE_M, f.wl - EDGE_LINE_M, f.wl];
+    for (let k = 0; k < RING_VERTS; k++) B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, cols[k], ds[k] / UVM, f.s / UVM);
+  }
+  // Estaciones intermedias del asfalto para la banda de goma (gaussiana en d = 0); van tras los anillos compartidos
+  const S = config.surfaces, sigma = S.rubberWidthM / 2;
+  const stations = [-S.rubberWidthM, -sigma, 0, sigma, S.rubberWidthM];
+  const mid: number[][] = [];
+  for (let r = a; r <= b; r++) {
+    const f = frames[r - a], row: number[] = [];
+    for (const d of stations) {
+      const dd = Math.min(Math.max(d, -f.wr), f.wl);
+      const c = C_ASPHALT.clone().multiplyScalar(1 - S.rubberDarken * Math.exp(-(dd * dd) / (2 * sigma * sigma)));
+      row.push(B.vert(pt(f, dd, 0), f.normal, c, dd / UVM, f.s / UVM));
+    }
+    mid.push(row);
   }
   for (let r = 0; r < b - a; r++) {
     const o0 = base[r], o1 = base[r + 1];
-    B.quad(o0 + 0, o0 + 1, o1 + 0, o1 + 1);   // asfalto
+    // asfalto: aR → estaciones → aL
+    const row0 = [o0 + 0, ...mid[r], o0 + 1], row1 = [o1 + 0, ...mid[r + 1], o1 + 1];
+    for (let k = 0; k < row0.length - 1; k++) B.quad(row0[k], row0[k + 1], row1[k], row1[k + 1]);
     B.quad(o0 + 2, o0 + 3, o1 + 2, o1 + 3);   // franja derecha
     B.quad(o0 + 4, o0 + 5, o1 + 4, o1 + 5);   // franja izquierda
   }
@@ -128,9 +145,10 @@ function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     const p0 = buildRingPositions(t, r), p1 = buildRingPositions(t, r + 1);
     const side = (flag0: number, flag1: number, ka: number, kb: number) => {
       if (!flag0 || !flag1) return;
-      const v = (p: Float32Array, k: number, f: Frame, u: number) =>
-        B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, band, u, f.s / 10);
-      const a0 = v(p0, ka, f0, 0), b0 = v(p0, kb, f0, 1), a1 = v(p1, ka, f1, 0), b1 = v(p1, kb, f1, 1);
+      const v = (p: Float32Array, k: number, f: Frame, d: number) =>
+        B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, band, d / UVM, f.s / UVM);
+      const dOf = (f: Frame, k: number) => (k === RING_VERTS ? -f.wr - KERB_WIDTH_M : k === RING_VERTS + 1 ? -f.wr : k === RING_VERTS + 2 ? f.wl : f.wl + KERB_WIDTH_M);
+      const a0 = v(p0, ka, f0, dOf(f0, ka)), b0 = v(p0, kb, f0, dOf(f0, kb)), a1 = v(p1, ka, f1, dOf(f1, ka)), b1 = v(p1, kb, f1, dOf(f1, kb));
       B.quad(a0, b0, a1, b1);
     };
     side(t.kerbR[i0], t.kerbR[i1], RING_VERTS + 0, RING_VERTS + 1);   // kR_out (d menor) → kR_in
@@ -146,17 +164,20 @@ function grassChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     const f = frameAt(t, r);
     base.push(B.count);
     const n3 = f.normal;
-    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), n3, null, 0, f.s / 10);
-    B.vert(pt(f, -f.wr, -GRASS_INNER_DROP_M), n3, null, 1, f.s / 10);
-    B.vert(pt(f, f.wl, -GRASS_INNER_DROP_M), n3, null, 0, f.s / 10);
-    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), n3, null, 1, f.s / 10);
+    // Franjas de siega alternas por s
+    const stripe = Math.floor(f.s / config.surfaces.stripeLenM) % 2 === 0 ? 1 + config.surfaces.stripeDarken : 1 - config.surfaces.stripeDarken;
+    const c = new THREE.Color(stripe, stripe, stripe);
+    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), n3, c, (-f.wr - t.runoff) / UVM, f.s / UVM);
+    B.vert(pt(f, -f.wr, -GRASS_INNER_DROP_M), n3, c, -f.wr / UVM, f.s / UVM);
+    B.vert(pt(f, f.wl, -GRASS_INNER_DROP_M), n3, c, f.wl / UVM, f.s / UVM);
+    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), n3, c, (f.wl + t.runoff) / UVM, f.s / UVM);
   }
   for (let r = 0; r < b - a; r++) {
     const o0 = base[r], o1 = base[r + 1];
     B.quad(o0, o0 + 1, o1, o1 + 1);
     B.quad(o0 + 2, o0 + 3, o1 + 2, o1 + 3);
   }
-  return B.build(false, false);
+  return B.build(true, false);
 }
 
 function wallChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
@@ -166,10 +187,10 @@ function wallChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
   for (let r = a; r <= b; r++) {
     const f = frameAt(t, r);
     base.push(B.count);
-    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), up, null, 0, f.s / 10);
-    B.vert(pt(f, -f.wr - t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / 10);
-    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), up, null, 0, f.s / 10);
-    B.vert(pt(f, f.wl + t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / 10);
+    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), up, null, 0, f.s / UVM);
+    B.vert(pt(f, -f.wr - t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / UVM);
+    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), up, null, 0, f.s / UVM);
+    B.vert(pt(f, f.wl + t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / UVM);
   }
   for (let r = 0; r < b - a; r++) {
     const o0 = base[r], o1 = base[r + 1];
@@ -194,19 +215,34 @@ function startLine(t: Track, mat: THREE.Material): THREE.Mesh {
   };
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const color = (r + c) % 2 === 0 ? C_KERB_WHITE : new THREE.Color('#111111');
-    const a0 = B.vert(P(r, c), up, color, 0, 0), b0 = B.vert(P(r, c + 1), up, color, 1, 0);
-    const a1 = B.vert(P(r + 1, c), up, color, 0, 1), b1 = B.vert(P(r + 1, c + 1), up, color, 1, 1);
+    const u0 = (-sp.wr + (c / cols) * w) / UVM, u1 = (-sp.wr + ((c + 1) / cols) * w) / UVM;
+    const a0 = B.vert(P(r, c), up, color, u0, 0), b0 = B.vert(P(r, c + 1), up, color, u1, 0);
+    const a1 = B.vert(P(r + 1, c), up, color, u0, len / UVM), b1 = B.vert(P(r + 1, c + 1), up, color, u1, len / UVM);
     B.quad(a0, b0, a1, b1);
+  }
+  // Cajones de parrilla: rectángulos blancos (4 líneas finas) detrás de la meta, alternando izquierda/derecha
+  const S = config.surfaces, white = C_KERB_WHITE;
+  const rect = (along0: number, along1: number, d0: number, d1: number) => {
+    const q = (al: number, d: number) => B.vert([sp.x + sp.tx * al + sp.nx * d, sp.y + 0.012, sp.z + sp.tz * al + sp.nz * d], up, white, d / UVM, al / UVM);
+    const a0 = q(along0, d0), b0 = q(along0, d1), a1 = q(along1, d0), b1 = q(along1, d1);
+    B.quad(a0, b0, a1, b1);
+  };
+  const lw = S.gridLineM;
+  for (let k = 0; k < S.gridSlots; k++) {
+    const side = k % 2 === 0 ? 1 : -1;
+    const al1 = -(S.gridSpacingM * (k + 1));
+    const al0 = al1 - S.gridBoxLenM;
+    const dc = side * S.gridOffsetM, d0 = dc - S.gridBoxWidthM / 2, d1 = dc + S.gridBoxWidthM / 2;
+    rect(al0, al0 + lw, d0, d1); rect(al1 - lw, al1, d0, d1);
+    rect(al0, al1, d0, d0 + lw); rect(al0, al1, d1 - lw, d1);
   }
   const m = new THREE.Mesh(B.build(true, true), mat);
   m.name = 'start-line';
   return m;
 }
 
-export function buildTrackMeshes(track: Track, chunks: number = config.render.trackChunks): TrackMeshes {
-  const road = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
-  const grass = new THREE.MeshStandardMaterial({ color: '#2f6b2f', roughness: 1, metalness: 0 });
-  const wall = new THREE.MeshStandardMaterial({ color: '#cfcfcf', roughness: 0.8, metalness: 0, side: THREE.DoubleSide });
+export function buildTrackMeshes(track: Track, materials: TrackMaterials = createTrackMaterials(), chunks: number = config.render.trackChunks): TrackMeshes {
+  const { road, grass, wall } = materials;
   const group = new THREE.Group();
   group.name = 'track';
   let triangles = 0;
@@ -236,6 +272,10 @@ export function buildTrackMeshes(track: Track, chunks: number = config.render.tr
   const size = Math.max(maxX - minX, maxZ - minZ) + 2 * track.runoff + 1000;
   const gg = new THREE.PlaneGeometry(size, size);
   gg.rotateX(-Math.PI / 2);
+  // UV en metros y color blanco (el material de hierba usa color por vértice)
+  const guv = gg.getAttribute('uv');
+  for (let i = 0; i < guv.count; i++) guv.setXY(i, guv.getX(i) * size / UVM, guv.getY(i) * size / UVM);
+  gg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(guv.count * 3).fill(1), 3));
   gg.translate((minX + maxX) / 2, minY - GRASS_DROP_M - 0.45, (minZ + maxZ) / 2);
   gg.computeBoundingSphere();
   add('ground', gg, grass);
@@ -243,5 +283,5 @@ export function buildTrackMeshes(track: Track, chunks: number = config.render.tr
   group.add(sl);
   triangles += (sl.geometry.index as THREE.BufferAttribute).count / 3;
 
-  return { group, materials: { road, grass, wall }, chunks, triangles };
+  return { group, materials, chunks, triangles };
 }

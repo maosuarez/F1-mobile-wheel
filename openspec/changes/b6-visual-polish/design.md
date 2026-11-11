@@ -25,6 +25,8 @@ export class FpsMeter { push(frameDtS: number): void; avg(): number; p5(): numbe
 
 `QUALITY`: `high { dpr: 1.5, shadows: true, 2048, post: true, msaa: 4, trees: 600, particles: 400, env: 256 }`, `medium { 1.25, true, 1024, false, 0, 400, 250, 128 }`, `low { 1.0, false, 0, false, 0, 300, 120, 64 }`. `config.quality = { downFps: 50, windowS: 3 }`. `?quality=` fija el nivel y bloquea la adaptación; `?post=0` fuerza `post: false`. Cambiar de nivel reconfigura en caliente (DPR, `shadowMap`, pasadas, `InstancedMesh.count`) sin recargar.
 
+Software GL (`rendererName` contiene `SwiftShader` o `llvmpipe`): el nivel inicial es `software`, sin adaptación. `software` es el perfil `low` con `envMapSize: 0` (sin `scene.environment`) y sin `map` ni `roughnessMap` en la pista. Motivo: con SwiftShader, `high` tarda ~2,6 s por fotograma y `low` ~1,1 s, frente a ~273 ms en HEAD; la adaptación no baja en emparejamiento. En GPU real no cambia nada. `?quality=` sigue funcionando.
+
 ### D2. Luz, cielo y entorno de reflexión (`src/render/scene.ts`, `src/render/sky.ts`)
 
 - `renderer.toneMapping = ACESFilmicToneMapping`, `outputColorSpace = SRGBColorSpace`, `shadowMap.type = PCFSoftShadowMap`.

@@ -12,6 +12,8 @@ export default defineConfig({
     },
   },
   server: {
+    // Túnel de Cloudflare (cloudflared tunnel --url http://localhost:5173)
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/ws': { target: 'ws://localhost:8000', ws: true },
       '/api': 'http://localhost:8000',
