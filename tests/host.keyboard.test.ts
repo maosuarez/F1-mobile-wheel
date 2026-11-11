@@ -41,4 +41,24 @@ describe('KeyboardInput', () => {
     expect(kb.read(1 / 120)).toMatchObject({ throttle: 0, brake: 1 });
     expect(config.keyboard.pedalRiseS).toBeGreaterThan(0);
   });
+  it('E mantenida genera un solo shiftUp; Q y F también por flanco', () => {
+    const { down, kb } = mk();
+    down.add('KeyE');
+    for (let i = 0; i < 30; i++) kb.read(1 / 120);
+    expect(kb.takeCommands()).toEqual(['shiftUp']);
+    expect(kb.takeCommands()).toEqual([]);
+    down.delete('KeyE'); kb.read(1 / 120);
+    down.add('KeyE'); down.add('KeyQ'); down.add('KeyF');
+    kb.read(1 / 120);
+    expect(kb.takeCommands()).toEqual(['shiftUp', 'shiftDown', 'drs']);
+  });
+  it('Espacio da ers = true mientras dura', () => {
+    const { down, kb } = mk();
+    expect(kb.read(1 / 120).ers).toBe(false);
+    down.add('Space');
+    expect(kb.read(1 / 120).ers).toBe(true);
+    expect(kb.read(1 / 120).ers).toBe(true);
+    down.delete('Space');
+    expect(kb.read(1 / 120).ers).toBe(false);
+  });
 });

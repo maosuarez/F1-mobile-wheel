@@ -1,6 +1,9 @@
+import { config } from '../shared/config';
 import type { GameConfig } from '../shared/config';
 import { locate } from '../track/query';
 import type { Surface, Track, TrackLocation } from '../track/types';
+import { aeroFactors } from './drs';
+import { ledsFor, powerFactor, rpmFor } from './gearbox';
 import type { CarState, DriverInput, SimEvent } from './types';
 
 // Dinámica arcade del monoplaza (design D5, skill f1-car-feel §2–§3, §7). Sin three ni DOM.
@@ -23,9 +26,9 @@ function nextNoise(car: CarState): number {
   return x / 4294967296 * 2 - 1;   // [-1, 1)
 }
 
-// Agarre disponible (m/s²): μ·(g + Fl/m)·μSuperficie.
-export function gripAccel(speed: number, surfaceMu: number, cfg: GameConfig): number {
-  const fl = 0.5 * cfg.sim.rho * cfg.aero.clA * speed * speed;
+// Agarre disponible (m/s²): μ·(g + Fl/m)·μSuperficie. claFactor: carga relativa (DRS abierto < 1).
+export function gripAccel(speed: number, surfaceMu: number, cfg: GameConfig, claFactor = 1): number {
+  const fl = 0.5 * cfg.sim.rho * cfg.aero.clA * claFactor * speed * speed;
   return cfg.car.mu * (cfg.sim.g + fl / cfg.car.massKg) * surfaceMu;
 }
 
@@ -55,8 +58,8 @@ function applyLocation(car: CarState, loc: TrackLocation): void {
   car.surface = loc.surface; car.kerbSide = loc.kerbSide;
 }
 
-// Avanza el coche exactamente cfg.sim.dt.
-export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: GameConfig, events: SimEvent[]): void {
+// Avanza el coche exactamente cfg.sim.dt. Devuelve la localización final.
+export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: GameConfig, events: SimEvent[]): TrackLocation {
   const dt = cfg.sim.dt;
   const g = cfg.sim.g;
   const m = cfg.car.massKg;
@@ -75,27 +78,36 @@ export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: Ga
   // 2. Localización y agarre
   let loc = locate(track, car.x, car.z, car.trackIndex);
   const surf = surfaceParams(loc.surface, cfg);
-  const aMax = gripAccel(v0, surf.mu, cfg);
+  const aero = aeroFactors(car, cfg);
+  const aMax = gripAccel(v0, surf.mu, cfg, aero.cla);
 
   // Dirección de la velocidad (φ) y deriva respecto al rumbo
   const phi = v0 > 1e-6 ? Math.atan2(-car.vz, car.vx) : car.yaw;
 
-  // 3. Fuerzas longitudinales
-  const fl = 0.5 * cfg.sim.rho * cfg.aero.clA * v0 * v0;
+  // 3. Fuerzas longitudinales (sentido de marcha: −1 si el coche retrocede respecto a su rumbo)
+  const dir = car.vLong < -1e-3 ? -1 : 1;
+  const fl = 0.5 * cfg.sim.rho * cfg.aero.clA * aero.cla * v0 * v0;
   const tractionMax = cfg.car.mu * cfg.car.rearLoadFraction * (m * g + fl) * surf.mu;
-  const driveDemand = car.throttle * (cfg.car.powerKw * 1000) / Math.max(v0, 5);
+  // Fuerza motriz según las RPM; 0 durante el corte, en punto muerto o en el limitador. Marcha atrás: sin ERS.
+  const gear = car.gear;
+  const cut = car.shiftCutS > 0 || gear === 0 || rpmFor(car.vLong, gear, cfg) >= cfg.gears.limiterRpm;
+  const iceKw = cfg.car.icePowerKw * powerFactor(car.rpm, cfg) * (car.overheated ? cfg.gears.overheat.powerFactor : 1);
+  const powerW = cut ? 0 : (iceKw + (gear > 0 ? car.ersDeployKw : 0)) * 1000 * car.throttle;
+  const driveDemand = powerW / Math.max(v0, 5);
   const driveForce = Math.min(driveDemand, tractionMax);
-  const aDrive = driveForce / m;
+  const aDrive = (gear < 0 ? -1 : 1) * driveForce / m;
+  // Freno motor con el acelerador levantado
+  const aEngine = gear !== 0 && car.throttle < 0.01 && v0 > 0.5 ? cfg.gears.engineBrakeMs2 * car.rpm / cfg.gears.limiterRpm : 0;
   const aBrake = car.brake * cfg.car.brakeGripFactor * aMax;
-  const aTireLong = aDrive - aBrake;
-  const aDrag = 0.5 * cfg.sim.rho * cfg.aero.cdA * v0 * v0 / m;
+  const aTireLong = Math.abs(aDrive) - aBrake;
+  const aDrag = 0.5 * cfg.sim.rho * cfg.aero.cdA * aero.cda * v0 * v0 / m;
   const aRoll = cfg.car.rollingCoef * g * surf.rolling;
   const slopePitch = loc.pitch * Math.cos(wrapAngle(car.yaw - loc.heading));
   const aSlope = -g * Math.sin(slopePitch);
 
   // 4. Giro deseado, limitado por el círculo de fricción (subviraje)
   const aLatAvail = Math.sqrt(Math.max(aMax * aMax - aTireLong * aTireLong, 0));
-  let r = -v0 * Math.tan(car.steerAngle) / cfg.car.wheelbaseM;   // steer > 0 ⇒ derecha ⇒ yaw decrece
+  let r = -dir * v0 * Math.tan(car.steerAngle) / cfg.car.wheelbaseM;   // steer > 0 ⇒ derecha ⇒ yaw decrece
   const rLimit = v0 > 0.5 ? aLatAvail / v0 : Infinity;
   if (Math.abs(r) > rLimit) r = Math.sign(r) * rLimit;
 
@@ -111,11 +123,18 @@ export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: Ga
   car.yaw = wrapAngle(car.yaw + r * dt + yawNoise * dt);
   car.yawRate = r + yawNoise;
 
-  // 7. Velocidad: módulo y relajación de la dirección hacia el rumbo
-  let v = v0 + (aTireLong - aDrag - aRoll + aSlope) * dt;
-  if (v < 0) v = 0;   // sin marcha atrás: parada sin retroceso
+  // 7. Velocidad con signo a lo largo del rumbo: la resistencia se opone al movimiento y no lo invierte
+  const u0 = dir * v0;
+  const uDrive = u0 + (aDrive + aSlope) * dt;
+  const resist = (aBrake + aDrag + aRoll + aEngine) * dt;
+  let u = Math.abs(uDrive) <= resist ? 0 : uDrive - Math.sign(uDrive) * resist;
+  if (gear >= 0 && u < 0) u = 0;    // hacia delante o en N: parada sin retroceso
+  if (gear < 0 && u > 0) u = 0;     // marcha atrás: no avanza
+  const v = Math.abs(u);
   let phiNew = phi;
-  if (v > 1e-6) {
+  if (u < 0) {
+    phiNew = wrapAngle(car.yaw + Math.PI);   // retroceso: velocidad alineada con el rumbo, hacia atrás
+  } else if (v > 1e-6) {
     if (v0 <= 1e-6) {
       phiNew = car.yaw;
     } else {
@@ -177,7 +196,7 @@ export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: Ga
   const ax = (car.vx - vx0) / dt, az = (car.vz - vz0) / dt;
   car.aLong = ax * fx + az * fz;
   car.aLat = ax * lx + az * lz;
-  const betaNow = car.speed > 1e-6 ? Math.abs(Math.atan2(car.vLat, Math.max(car.vLong, 1e-6))) : 0;
+  const betaNow = car.speed > 1e-6 ? Math.abs(Math.atan2(car.vLat, Math.max(Math.abs(car.vLong), 1e-6))) : 0;
   car.slip = car.speed < cfg.car.minSpeedForSlipMs ? 0 : Math.min(1, Math.max(betaNow / SLIP_ANGLE_REF, excess));
 
   // 11. Altura y orientación de la pista
@@ -185,8 +204,15 @@ export function stepCar(car: CarState, input: DriverInput, track: Track, cfg: Ga
   car.pitch = loc.pitch * Math.cos(wrapAngle(car.yaw - loc.heading));
   car.roll = loc.bank;
 
-  // 12. Eventos de superficie
+  // 12. RPM mostradas (con patinaje, recortadas al limitador) y LEDs; en N las fija la caja
+  if (gear !== 0) {
+    car.rpm = Math.min(rpmFor(car.vLong, gear, cfg) + cfg.gears.wheelspinRpm * excess, cfg.gears.limiterRpm);
+    car.leds = car.limiter ? 16 : ledsFor(car.rpm, cfg);
+  }
+
+  // 13. Eventos de superficie
   if (car.surface !== prevSurface) events.push({ type: 'surface', surface: car.surface });
+  return loc;
 }
 
 // Normal de pista interpolada en la localización (a partir del rumbo de pista).
@@ -202,5 +228,8 @@ export function createCarState(): CarState {
     vx: 0, vz: 0, speed: 0, vLong: 0, vLat: 0, yawRate: 0,
     steerAngle: 0, throttle: 0, brake: 0, aLong: 0, aLat: 0, slip: 0,
     s: 0, d: 0, trackIndex: 0, surface: 'asphalt', kerbSide: null,
+    gear: 1, rpm: config.gears.idleRpm, leds: 0, limiter: false, shiftCutS: 0,
+    engineTemp: 0, overheated: false, drs: 0,
+    ersCharge: 1, ersLapDeployedMJ: 0, overtake: false, ersDeployKw: 0, offTrack: false,
   };
 }

@@ -14,6 +14,13 @@ export interface CarState {
   aLong: number; aLat: number;                                  // m/s² en ejes del coche
   slip: number;                                                 // 0..1 deslizamiento (ángulo de deriva normalizado / patinaje)
   s: number; d: number; trackIndex: number; surface: Surface; kerbSide: TrackSide | null;
+  gear: number;                                                 // −1 R, 0 N, 1..8
+  rpm: number; leds: number; limiter: boolean;
+  shiftCutS: number;                                            // tiempo restante de corte
+  engineTemp: number; overheated: boolean;
+  drs: 0 | 1 | 2;
+  ersCharge: number; ersLapDeployedMJ: number; overtake: boolean; ersDeployKw: number;
+  offTrack: boolean;
 }
 
 export interface TimingState {
@@ -27,6 +34,8 @@ export type SimEvent =
   | { type: 'lapEnd'; lap: number; timeS: number; valid: boolean; best: boolean }
   | { type: 'sector'; index: 0 | 1 | 2; timeS: number }
   | { type: 'wallHit'; speedMs: number }
-  | { type: 'surface'; surface: Surface };
+  | { type: 'surface'; surface: Surface }
+  | { type: 'shift'; from: number; to: number } | { type: 'shiftRejected' } | { type: 'limiter' }
+  | { type: 'overheat'; on: boolean } | { type: 'drs'; open: boolean } | { type: 'limits' };
 
 export interface SimState { t: number; stepCount: number; car: CarState; timing: TimingState }

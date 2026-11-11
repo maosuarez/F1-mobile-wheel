@@ -16,6 +16,8 @@ const move = (v: number, target: number, rise: number, fall: number, dt: number)
 export class KeyboardInput implements InputSource {
   readonly name = 'keyboard' as const;
   private steer = 0; private throttle = 0; private brake = 0;
+  private pending: DriverCommand[] = [];
+  private prevDown: Record<string, boolean> = {};
 
   constructor(private readonly keys: KeyState, private readonly cfg = config.keyboard) {}
 
@@ -27,18 +29,26 @@ export class KeyboardInput implements InputSource {
     this.steer = move(this.steer, steerT, c.steerRiseS, c.steerFallS, dtS);
     this.throttle = move(this.throttle, thrT, c.pedalRiseS, c.pedalFallS, dtS);
     this.brake = move(this.brake, brkT, c.pedalRiseS, c.pedalFallS, dtS);
-    return { steer: this.steer, throttle: this.throttle, brake: this.brake, ers: false };
+    // Órdenes por flanco: una pulsación mantenida genera una sola orden
+    for (const [code, cmd] of EDGE_KEYS) {
+      const d = k.isDown(code);
+      if (d && !this.prevDown[code]) this.pending.push(cmd);
+      this.prevDown[code] = d;
+    }
+    return { steer: this.steer, throttle: this.throttle, brake: this.brake, ers: k.isDown('Space') };
   }
 
-  takeCommands(): DriverCommand[] { return []; }
+  takeCommands(): DriverCommand[] { const c = this.pending; this.pending = []; return c; }
 }
+
+const EDGE_KEYS: [string, DriverCommand][] = [['KeyE', 'shiftUp'], ['KeyQ', 'shiftDown'], ['KeyF', 'drs']];
 
 const PREVENT = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
 
 // Adaptador fino de eventos del navegador
 export class KeyboardAdapter implements KeyState {
   private down = new Set<string>();
-  constructor(private readonly target: Window, private readonly cb: { onRecenter?: () => void; onPause?: () => void } = {}) {
+  constructor(private readonly target: Window, private readonly cb: { onRecenter?: () => void; onPause?: () => void; onToggleAuto?: () => void } = {}) {
     target.addEventListener('keydown', this.onDown);
     target.addEventListener('keyup', this.onUp);
     target.addEventListener('blur', this.onBlur);
@@ -51,6 +61,7 @@ export class KeyboardAdapter implements KeyState {
     if (e.repeat) return;
     this.down.add(e.code);
     if (e.code === 'KeyR') this.cb.onRecenter?.();
+    if (e.code === 'KeyM') this.cb.onToggleAuto?.();
     if (e.code === 'KeyP' || e.code === 'Escape') this.cb.onPause?.();
   };
   private onUp = (e: KeyboardEvent) => { this.down.delete(e.code); };

@@ -6,6 +6,7 @@ export interface DebugSnapshot {
   fps: number; drawCalls: number; triangles: number; maxDrawCalls: number; maxTriangles: number; dpr: number;
   wallHits: number; simTimeS: number;
   room: string | null; wheelLink: string; rttMs: number | null;
+  gear: number; rpm: number; leds: number; drs: number; ers: number; ot: boolean; autoShift: boolean; lapValid: boolean; warn: string; overheated: boolean;
   inputApplied: { steer: number; thr: number; brk: number; ers: boolean }; pauseReason: string | null;
 }
 

@@ -3,10 +3,12 @@ import type { GameConfig } from '../shared/config';
 import { sampleAt, wrapS } from '../track/query';
 import type { Track } from '../track/types';
 import { gripAccel, maxSteerRad } from './car';
+import { rpmFor } from './gearbox';
 import type { DriverCommand, DriverInput, SimState } from './types';
 
-// Piloto de referencia determinista (design D6): sigue la línea central con persecución pura
-// y un perfil de velocidad limitado por agarre lateral y frenada.
+// Piloto de referencia determinista (design D6, b4 D4): sigue la línea central con persecución pura
+// y un perfil de velocidad limitado por agarre lateral y frenada. Confía en el cambio automático,
+// abre el DRS a fondo cuando está disponible y nunca usa el adelantamiento.
 
 // Velocidad objetivo (m/s) por muestra.
 export function buildSpeedProfile(track: Track, cfg: GameConfig): Float64Array {
@@ -79,6 +81,18 @@ export class Autopilot {
     const throttle = err >= 0 ? Math.min(1, err * a.throttleGain) : 0;
     const brake = err < 0 ? Math.min(1, -err * a.brakeGain) : 0;
 
-    return { input: { steer, throttle, brake, ers: false }, commands: [] };
+    const commands: DriverCommand[] = car.drs === 1 && throttle > 0.95 ? ['drs'] : [];
+    return { input: { steer, throttle, brake, ers: false }, commands };
+  }
+
+  // Marcha que engranaría el cambio automático a la velocidad actual (sugerencia para cambiar a mano).
+  suggestedGear(state: SimState): number {
+    const car = state.car;
+    const g = this.cfg.gears;
+    const top = g.topSpeedKmh.length;
+    let gear = Math.min(Math.max(car.gear, 1), top);
+    while (gear < top && rpmFor(car.vLong, gear, this.cfg) >= g.auto.upFrac * g.limiterRpm) gear++;
+    while (gear > 1 && rpmFor(car.vLong, gear - 1, this.cfg) < g.auto.downFrac * g.limiterRpm) gear--;
+    return gear;
   }
 }

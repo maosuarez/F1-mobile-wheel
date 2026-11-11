@@ -8,14 +8,28 @@
 <body>
   <canvas id="game"></canvas>
   <div id="hud" hidden>
-    <div class="hud-speed"><span data-testid="hud-speed">0</span><small>km/h</small></div>
-    <div class="hud-times">
-      <div>Vuelta <span data-testid="hud-lap">1</span></div>
-      <div>Tiempo <span data-testid="hud-laptime">-:--.---</span></div>
-      <div>Última <span data-testid="hud-last">-:--.---</span></div>
-      <div>Mejor <span data-testid="hud-best">-:--.---</span></div>
-      <div>Delta <span data-testid="hud-delta"></span></div>
-    </div>
+    <section class="hud-times" aria-label="Tiempos">
+      <div class="t-row"><span class="t-k">Vuelta</span><span class="t-v" data-testid="hud-lap">1</span></div>
+      <div class="t-row t-main"><span class="t-k">Tiempo</span><span class="t-v" data-testid="hud-laptime">-:--.---</span></div>
+      <div class="t-row"><span class="t-k">Delta</span><span class="t-v" data-testid="hud-delta" data-tone="none"></span></div>
+      <div class="t-row"><span class="t-k">Última</span><span class="t-v" data-testid="hud-last">-:--.---</span></div>
+      <div class="t-row"><span class="t-k">Mejor</span><span class="t-v" data-testid="hud-best">-:--.---</span></div>
+      <div class="sectors"><i data-testid="hud-sector-0" data-state="none">S1</i><i data-testid="hud-sector-1" data-state="none">S2</i><i data-testid="hud-sector-2" data-state="none">S3</i></div>
+    </section>
+    <div class="hud-warn" data-testid="hud-warn" role="alert"></div>
+    <section class="hud-drive" aria-label="Conducción">
+      <div class="leds" data-testid="hud-leds"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
+      <div class="drive-row">
+        <div class="gear" data-testid="hud-gear">N</div>
+        <div class="speed"><span data-testid="hud-speed">0</span><small>km/h</small></div>
+        <div class="auto" data-testid="hud-auto" data-on="1">AUTO</div>
+      </div>
+    </section>
+    <section class="hud-energy" aria-label="Energía">
+      <div class="drs" data-testid="hud-drs" data-state="0">DRS</div>
+      <div class="ers"><div class="ers-head"><span>ERS</span><b data-testid="hud-ers-pct">100%</b><em data-testid="hud-ot" data-on="0">ADELANTAMIENTO</em></div>
+        <div class="ers-bar"><div class="ers-fill" data-testid="hud-ers"></div></div></div>
+    </section>
   </div>
   <div id="overlay-pairing" class="overlay pairing" data-testid="pairing" hidden>
     <div class="pairing-card">

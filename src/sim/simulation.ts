@@ -2,7 +2,11 @@ import { config as defaultConfig } from '../shared/config';
 import type { GameConfig } from '../shared/config';
 import { locate, sampleAt, wrapS } from '../track/query';
 import type { Track } from '../track/types';
-import { createCarState, seedCarNoise, stepCar } from './car';
+import { createCarState, gripAccel, seedCarNoise, stepCar } from './car';
+import { aeroFactors, stepDrs } from './drs';
+import { onLapStartErs, stepErs } from './ers';
+import { clearGearboxQueue, stepGearbox } from './gearbox';
+import { stepLimits } from './limits';
 import { LapTimer } from './timing';
 import type { DriverCommand, DriverInput, SimEvent, SimState } from './types';
 
@@ -12,6 +16,8 @@ export class Simulation {
   readonly cfg: GameConfig;
   readonly state: SimState;
   readonly timer: LapTimer;
+  assists: { autoShift: boolean } = { autoShift: true };   // el host lo pone a false al tomar el control el volante
+  private brakePowerW = 0;                                  // potencia de frenado del paso anterior (recarga del ERS)
 
   constructor(track: Track, cfg: GameConfig = defaultConfig) {
     this.track = track;
@@ -21,16 +27,26 @@ export class Simulation {
     this.reset();
   }
 
-  // Avanza exactamente cfg.sim.dt. Los comandos se ignoran en este bloque.
-  step(input: DriverInput, _commands?: readonly DriverCommand[]): SimEvent[] {
+  // Avanza exactamente cfg.sim.dt. Orden: caja → DRS → ERS → coche → límites → cronómetro.
+  step(input: DriverInput, commands: readonly DriverCommand[] = []): SimEvent[] {
     const events: SimEvent[] = [];
     const st = this.state;
-    const sPrev = st.car.s;
+    const car = st.car;
+    const cfg = this.cfg;
+    const sPrev = car.s;
     const tPrev = st.t;
-    stepCar(st.car, input, this.track, this.cfg, events);
+    stepGearbox(car, input, commands, this.assists.autoShift, cfg, events);
+    stepDrs(car, input, commands, this.track, cfg, events);
+    stepErs(car, input, this.brakePowerW, cfg);
+    const loc = stepCar(car, input, this.track, cfg, events);
+    this.brakePowerW = car.brake * cfg.car.brakeGripFactor
+      * gripAccel(car.speed, cfg.surface[car.surface].mu, cfg, aeroFactors(car, cfg).cla) * cfg.car.massKg * car.speed;
+    stepLimits(car, loc, this.timer, cfg, events);
     st.stepCount++;
-    st.t = st.stepCount * this.cfg.sim.dt;
-    this.timer.update(sPrev, st.car.s, tPrev, st.t, events);
+    st.t = st.stepCount * cfg.sim.dt;
+    const n0 = events.length;
+    this.timer.update(sPrev, car.s, tPrev, st.t, events);
+    for (let i = n0; i < events.length; i++) if (events[i].type === 'lapStart') onLapStartErs(car, cfg);
     return events;
   }
 
@@ -56,6 +72,11 @@ export class Simulation {
     car.x = p.x; car.z = p.z; car.yaw = p.heading;
     car.vx = 0; car.vz = 0; car.speed = 0; car.vLong = 0; car.vLat = 0; car.yawRate = 0;
     car.steerAngle = 0; car.throttle = 0; car.brake = 0; car.aLong = 0; car.aLat = 0; car.slip = 0;
+    // Mecánicas: 1.ª, DRS cerrado, sin corte ni despliegue (batería y temperatura se conservan)
+    car.gear = 1; car.rpm = this.cfg.gears.idleRpm; car.leds = 0; car.limiter = false; car.shiftCutS = 0;
+    car.drs = 0; car.overtake = false; car.ersDeployKw = 0;
+    clearGearboxQueue(car);
+    this.brakePowerW = 0;
     const loc = locate(this.track, p.x, p.z, Math.round(wrapS(this.track, s) / this.track.step));
     car.s = loc.s; car.d = loc.d; car.trackIndex = loc.i; car.surface = loc.surface; car.kerbSide = loc.kerbSide;
     car.y = loc.y + loc.bank * loc.d; car.pitch = p.pitch; car.roll = loc.bank;

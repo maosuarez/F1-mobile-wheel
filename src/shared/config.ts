@@ -1,10 +1,22 @@
 // Configuración global del juego (design D2). Objeto mutable para poder clonarlo y alterarlo en tests.
 export const config = {
   sim:   { dt: 1/120, maxSubSteps: 8, g: 9.81, rho: 1.2, startOffsetM: 20 },
-  car:   { massKg: 800, wheelbaseM: 3.6, halfWidthM: 1.0, powerKw: 680,   // 560 combustión + 120 ERS; el bloque 4 lo separa
+  car:   { massKg: 800, wheelbaseM: 3.6, halfWidthM: 1.0, icePowerKw: 560,
            mu: 1.7, rearLoadFraction: 0.6, brakeGripFactor: 0.85, rollingCoef: 0.015,
            steerMaxLowDeg: 16, steerMaxHighDeg: 3.5, steerSpeedRefMs: 85, steerTauS: 0.06,
            pedalTauS: 0.03, alignRate: 10, oversteerGain: 0.6, minSpeedForSlipMs: 3 },
+  gears: { limiterRpm: 12500, idleRpm: 4000, topSpeedKmh: [95, 130, 160, 190, 225, 260, 300, 350], reverseTopKmh: 60,
+           reverseMaxEntryKmh: 5, shiftCutS: 0.04, downshiftMarginRpm: 500,
+           powerCurve: [[4000, 0.45], [7000, 0.78], [9000, 1], [12000, 1], [12500, 0.88]] as [number, number][],
+           engineBrakeMs2: 0.3, wheelspinRpm: 1500, neutralRevRate: 6,
+           ledStartFrac: 0.75, ledFullFrac: 0.96,
+           auto: { upFrac: 0.96, downFrac: 0.78 },
+           overheat: { heatPerS: 0.25, coolPerS: 0.1, threshold: 1.0, recover: 0.6, max: 1.2, powerFactor: 0.8 } },
+  drs:   { cdaFactor: 0.86, claFactor: 0.95, brakeClose: 0.1 },
+  ers:   { capacityMJ: 4, baseDeployKw: 120, overtakeExtraKw: 60, overtakeDrainMult: 3, overtakeMinCharge: 0.05,
+           fullThrottle: 0.95, regenMaxKw: 250, regenFraction: 0.3, lapBonus: 0.03, lapDeployLimitMJ: 3.5 },
+  limits: { marginM: 1.0, warnS: 3 },
+  hud:   { warnShiftRejectedS: 1 },
   aero:  { cdA: 1.5, clA: 4.0 },
   surface: { asphalt: { mu: 1.0, rolling: 1 }, kerb: { mu: 0.85, rolling: 1, yawNoise: 0.02 },
              grass: { mu: 0.45, rolling: 6 },

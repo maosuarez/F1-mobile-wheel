@@ -1,10 +1,11 @@
 # E2E del bloque 2 (adaptado a b3: emparejamiento + Enter + cuenta atrás): arranque, teclado, pausa, vuelta con piloto de referencia, persistencia y consola limpia.
+import os
 import re
 import sys
 import time
 from playwright.sync_api import sync_playwright
 
-BASE = "http://localhost:5173"
+BASE = "http://localhost:" + os.environ.get("E2E_WEB_PORT", "5173")
 errors = []
 checks = []
 
@@ -48,7 +49,13 @@ def main():
         # (b) Enter -> cuenta atrás con teclado -> acelerar 3 s
         page.keyboard.press("Enter")
         page.wait_for_function("window.__f1.snapshot().gameState === 'countdown'", timeout=5000)
-        check("b: cuenta atrás visible", page.locator('[data-testid="countdown"]').is_visible())
+        # la cuenta atrás se pinta en el fotograma siguiente al cambio de estado (fps bajos en SwiftShader)
+        try:
+            page.locator('[data-testid="countdown"]').wait_for(state="visible", timeout=2500)
+            cd_ok = True
+        except Exception:
+            cd_ok = False
+        check("b: cuenta atrás visible", cd_ok)
         page.wait_for_function("window.__f1.snapshot().gameState === 'racing'", timeout=10000)
         page.keyboard.down("ArrowUp")
         # SwiftShader va lento: se espera a 3 s de tiempo de simulación, no de reloj

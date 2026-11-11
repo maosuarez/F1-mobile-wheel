@@ -18,6 +18,7 @@ import { Autopilot } from '../sim/autopilot';
 import { decodeAtHost, encode, generateRoomCode, type TelHint } from '../shared/protocol';
 import { RoomClient } from './net/roomClient';
 import { WheelSource } from './net/wheelSource';
+import { WarningCenter } from './warnings';
 import { buildTel } from './net/telemetry';
 import { PairingUi, wheelUrl, type RelayInfo } from './pairing';
 
@@ -71,14 +72,18 @@ async function start(): Promise<void> {
   const hud = new Hud();
   const panel = new DebugPanel();
   hud.show(true);
+  const warnings = new WarningCenter();
+  const bestSectors: (number | null)[] = [null, null, null];
 
   const stepper = new FixedStepper(config.sim.dt, config.sim.maxSubSteps);
   const adapter = new KeyboardAdapter(window, {
     onRecenter: () => { if (state === 'racing') { sim.recenter(); syncPrev(); } },
     onPause: () => togglePause(),
+    onToggleAuto: () => { if (state === 'racing' && source !== wheel) sim.assists.autoShift = !sim.assists.autoShift; },
   });
   const keyboardSource = new KeyboardInput(adapter);
   let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
+  const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = s.name !== 'wheel'; };
 
   // Volante: sala del relay (no se abre con ?autopilot=1)
   const ui = new PairingUi();
@@ -141,7 +146,7 @@ async function start(): Promise<void> {
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'F3') { e.preventDefault(); panel.toggle(); return; }
-    if (state === 'pairing' && (e.code === 'Enter' || e.code === 'NumpadEnter')) { source = keyboardSource; startCountdown(); }
+    if (state === 'pairing' && (e.code === 'Enter' || e.code === 'NumpadEnter')) { setSource(keyboardSource); startCountdown(); }
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause('hidden'); });
 
@@ -152,9 +157,9 @@ async function start(): Promise<void> {
     if (source !== wheel) wheel.takeCommands();                 // órdenes sin efecto si no controla el volante
     const link = wheel.link();
     if (link === 'ok') {
-      if (state === 'pairing') { source = wheel; startCountdown(); }
+      if (state === 'pairing') { setSource(wheel); startCountdown(); }
       else if (source !== wheel && (state === 'countdown' || state === 'racing' || state === 'paused')) {
-        source = wheel; ui.toast('Volante conectado');
+        setSource(wheel); ui.toast('Volante conectado');
       } else if (state === 'paused' && pauseReason === 'wheelLost') resume();
     } else if (link === 'lost' && source === wheel) pause('wheelLost');
   };
@@ -166,11 +171,11 @@ async function start(): Promise<void> {
     if (link !== 'ok' && link !== 'stale') return;
     const now = nowMs();
     const warn = state === 'countdown' ? String(Math.max(1, Math.ceil((countdownEndMs - now) / 1000)))
-      : state === 'paused' ? 'PAUSA' : '';
+      : state === 'paused' ? 'PAUSA' : warnings.current(sim.state, sim.state.t);
     let dbg: TelHint | undefined;
     if (refPilot) {
       const r = refPilot.update(sim.state);
-      dbg = { steer: r.input.steer, thr: r.input.throttle, brk: r.input.brake, gear: 1 };
+      dbg = { steer: r.input.steer, thr: r.input.throttle, brk: r.input.brake, gear: refPilot.suggestedGear(sim.state) };
     }
     const e = wheel.echo();
     client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg })));
@@ -187,6 +192,8 @@ async function start(): Promise<void> {
         fps, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
         maxDrawCalls: maxDraw, maxTriangles: maxTris, dpr, wallHits, simTimeS: sim.state.t,
         room, wheelLink: wheel ? wheel.link() : 'none', rttMs: wheel ? wheel.lastRttMs() : null,
+        gear: c.gear, rpm: c.rpm, leds: c.leds, drs: c.drs, ers: c.ersCharge, ot: c.overtake,
+        autoShift: sim.assists.autoShift, lapValid: t.lapValid, warn: warnings.current(sim.state, sim.state.t), overheated: c.overheated,
         inputApplied: { steer: lastInput.steer, thr: lastInput.throttle, brk: lastInput.brake, ers: lastInput.ers },
         pauseReason,
       };
@@ -227,6 +234,8 @@ async function start(): Promise<void> {
         lastInput = source.read(dt, sim.state);
         const events = sim.step(lastInput, source.takeCommands());
         for (const ev of events) {
+          warnings.push(ev, sim.state.t);
+          if (ev.type === 'sector') { const b = bestSectors[ev.index]; if (b === null || ev.timeS < b!) bestSectors[ev.index] = ev.timeS; }
           if (ev.type === 'wallHit') wallHits++;
           else if (ev.type === 'lapEnd' && ev.valid && ev.best) saveBest(track.id, ev.timeS);
         }
@@ -257,7 +266,7 @@ async function start(): Promise<void> {
     maxTris = Math.max(maxTris, info.triangles);
     dpr = renderer.getPixelRatio();
 
-    hud.update(cs.speed * 3.6, sim.state.timing);
+    hud.update(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift);
     panel.update(now, {
       fps, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
       surface: cs.surface, gLong: cs.aLong / config.sim.g, gLat: cs.aLat / config.sim.g,

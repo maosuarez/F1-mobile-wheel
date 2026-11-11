@@ -10,11 +10,12 @@ import { full, place, runUntil } from './helpers/drive';
 type LapEnd = Extract<SimEvent, { type: 'lapEnd' }>;
 type SectorEv = Extract<SimEvent, { type: 'sector' }>;
 
-// Sin arrastre ni rodadura: la velocidad que impone el test se mantiene exacta durante el paso.
+// Sin arrastre, rodadura ni freno motor: la velocidad que impone el test se mantiene exacta durante el paso.
 const newSim = () => {
   const c = structuredClone(config);
   c.aero.cdA = 0;
   c.car.rollingCoef = 0;
+  c.gears.engineBrakeMs2 = 0;
   return new Simulation(makeOvalTrack(), c);
 };
 

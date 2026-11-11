@@ -1,7 +1,7 @@
 import type { TelHint, TelMsg } from '../../shared/protocol';
 import type { SimState } from '../../sim/types';
 
-// Telemetría hacia el volante (design D4). Hasta el bloque 4: gear 1, rpm 0, leds 0, drs 0, ers 1, ot false.
+// Telemetría hacia el volante con los valores reales del coche (los mismos que muestra el HUD)
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 const WARN_MAX = 24;
@@ -10,7 +10,8 @@ export function buildTel(state: SimState, extra: { warn: string; echo: number; h
   const tel: TelMsg = {
     t: 'tel',
     spd: Math.max(0, state.car.speed * 3.6),
-    gear: 1, rpm: 0, leds: 0, drs: 0, ers: 1, ot: false,
+    gear: clamp(Math.round(state.car.gear), -1, 8), rpm: Math.max(0, state.car.rpm), leds: clamp(Math.round(state.car.leds), 0, 16),
+    drs: state.car.drs, ers: clamp(state.car.ersCharge, 0, 1), ot: state.car.overtake,
     lap: state.timing.lap,
     delta: state.timing.deltaS,
     warn: extra.warn.slice(0, WARN_MAX),

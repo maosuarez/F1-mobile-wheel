@@ -4,7 +4,13 @@ import { Simulation } from '../src/sim/simulation';
 import { makeStraightTrack } from '../src/track/synthetic';
 import { G, full, kmh, ms, place, runFor, runUntil } from './helpers/drive';
 
-const cfg = () => structuredClone(config);
+// Toda la potencia disponible: batería y límite por vuelta prácticamente ilimitados.
+const cfg = () => {
+  const c = structuredClone(config);
+  c.ers.capacityMJ = 1e6;
+  c.ers.lapDeployLimitMJ = 1e6;
+  return c;
+};
 const flat = () => makeStraightTrack({ lengthM: 12000, halfWidthM: 8 });
 const THROTTLE = full({ throttle: 1 });
 const BRAKE = full({ brake: 1 });

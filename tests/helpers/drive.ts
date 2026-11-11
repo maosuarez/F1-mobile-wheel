@@ -1,3 +1,4 @@
+import { rpmFor } from '../../src/sim/gearbox';
 import type { Simulation } from '../../src/sim/simulation';
 import type { DriverInput, SimEvent, SimState } from '../../src/sim/types';
 import { locate, sampleAt } from '../../src/track/query';
@@ -44,6 +45,11 @@ export function place(sim: Simulation, s: number, d: number, speed: number, yawO
   c.steerAngle = 0; c.aLong = 0; c.aLat = 0; c.slip = 0;
   const loc = locate(t, c.x, c.z, Math.round(s / t.step));
   c.s = loc.s; c.d = loc.d; c.trackIndex = loc.i; c.surface = loc.surface; c.kerbSide = loc.kerbSide;
+  // Marcha que llevaría el automático a esa velocidad (la más corta por debajo del punto de subida)
+  const gc = sim.cfg.gears;
+  let gear = 1;
+  while (gear < gc.topSpeedKmh.length && rpmFor(speed, gear, sim.cfg) >= gc.auto.upFrac * gc.limiterRpm) gear++;
+  c.gear = gear; c.rpm = Math.min(rpmFor(speed, gear, sim.cfg), gc.limiterRpm); c.shiftCutS = 0; c.limiter = false;
 }
 
 // Controlador proporcional de velocidad sobre el acelerador.
