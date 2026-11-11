@@ -15,12 +15,16 @@ El host SHALL detectar un `Gamepad` con `mapping === 'standard'` conectado por U
 - **WHEN** se desenchufa el mando en carrera
 - **THEN** la fuente vuelve al teclado, el coche conserva su estado y el cambio sigue en automático
 
+#### Scenario: Arranque desde la pantalla de emparejamiento
+- **WHEN** el juego está en `pairing`, hay un mando estándar conectado y se pulsa Cruz u Options
+- **THEN** la fuente pasa a `gamepad` y empieza la cuenta atrás, como con Enter
+
 ### Requirement: Mapeo de controles
 El mapeo SHALL ser una función pura y testeable: stick izquierdo X = dirección con zona muerta `config.gamepad.stickDeadzone`; R2 (`buttons[7].value`) = acelerador y L2 (`buttons[6].value`) = freno, ambos con zona muerta de gatillo; R1/L1 = `shiftUp`/`shiftDown` por flanco; Cuadrado = `drs` por flanco; Círculo mantenido = ERS; Triángulo = cámara siguiente; Options = pausa; Cruz = recolocar; Share mantenido `config.race.restartHoldMs` = reiniciar.
 
 #### Scenario: Dirección y pedales
 - **WHEN** el stick izquierdo está a −1 en X, R2 = 0.5 y L2 = 0
-- **THEN** `steer` es −1, `throttle` es 0.5 (tras zona muerta) y `brake` es 0
+- **THEN** `steer` es −1, `throttle` es ≈0.47 (0.5 reescalado tras la zona muerta de 0.05) y `brake` es 0
 
 #### Scenario: Zona muerta
 - **WHEN** el stick está a 0.05 en X con zona muerta 0.08

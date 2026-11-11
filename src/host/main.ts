@@ -28,6 +28,7 @@ import { KeyboardAdapter, KeyboardInput } from './input/keyboard';
 import { AutopilotSource } from './input/autopilotSource';
 import type { InputSource } from './input/types';
 import { VrControllersSource, nextVrSource } from './input/vrControllers';
+import { GamepadSource, nextGamepadSource } from './input/gamepad';
 import { Autopilot } from '../sim/autopilot';
 import { decodeAtHost, encode, generateRoomCode, type TelHint } from '../shared/protocol';
 import { RoomClient } from './net/roomClient';
@@ -120,6 +121,7 @@ async function start(): Promise<void> {
   let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
   const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = s.name !== 'wheel'; };
   const controllersSource = new VrControllersSource(renderer.xr);
+  const gamepadSource = new GamepadSource(() => navigator.getGamepads?.() ?? []);
 
   // Volante: sala del relay (no se abre con ?autopilot=1)
   const ui = new PairingUi();
@@ -147,6 +149,9 @@ async function start(): Promise<void> {
     client.connect();
     void fetchRelayInfo().then((info) => { if (info) showRoom(info); else ui.setRelayDown(true); });
   }
+  // Mando USB (b10): aviso al conectarlo; la selección de fuente se sondea cada fotograma en updateGamepad
+  window.addEventListener('gamepadconnected', (e) => { if (e.gamepad.mapping === 'standard') ui.toast('Mando conectado'); });
+  window.addEventListener('gamepaddisconnected', (e) => { if (e.gamepad.mapping === 'standard') ui.toast('Mando desconectado'); });
   const refPilot = debug && wheel ? new Autopilot(track) : null;     // sugerencia `dbg` del tel
 
   let lastInput: DriverInput = NEUTRAL_INPUT;
@@ -187,6 +192,7 @@ async function start(): Promise<void> {
     bestSectors.fill(null);
     syncPrev();
     controllersSource.reset();
+    gamepadSource.reset();
     pauseReason = null;
     startCountdown();
   };
@@ -215,6 +221,30 @@ async function start(): Promise<void> {
         setSource(wheel); ui.toast('Volante conectado');
       } else if (state === 'paused' && pauseReason === 'wheelLost') resume();
     } else if (link === 'lost' && source === wheel) pause('wheelLost');
+  };
+
+  // Mando USB (design D4): sustituye al teclado sin volante ni sesión VR; antes de updateControllers para que,
+  // al entrar en VR, el teclado devuelto pase a los mandos en el mismo fotograma
+  const updateGamepad = (dtMs: number) => {
+    // Pantalla de emparejamiento: Cruz u Options arrancan con el mando; solo el flanco, sin arrastrar el arranque
+    const events = gamepadSource.pollUi(dtMs);
+    if (state === 'pairing') {
+      if (events.includes('recenter') || events.includes('pause')) { setSource(gamepadSource); startCountdown(); }
+      gamepadSource.takeCommands();
+      return;
+    }
+    // Triángulo = cámara; Options = pausa, Cruz = recolocar y Share mantenido = reiniciar, solo si conduce el mando
+    for (const ev of events) {
+      if (ev === 'camera') rig.next();
+      else if (source !== gamepadSource) continue;
+      else if (ev === 'pause') togglePause();
+      else if (ev === 'restart') restartRace();
+      else if (state === 'racing') { sim.recenter(); syncPrev(); }
+    }
+    if (source !== gamepadSource || state === 'paused') gamepadSource.takeCommands();   // órdenes sin efecto
+    const next = nextGamepadSource(source, keyboardSource, gamepadSource, gamepadSource.connected(),
+      wheel ? wheel.link() : 'none', inVr);
+    if (next) setSource(next);
   };
 
   // Mandos VR (design D8): sustituyen al teclado solo en sesión VR y sin volante conectado; tras updateWheel
@@ -358,6 +388,7 @@ async function start(): Promise<void> {
     }
 
     updateWheel();
+    updateGamepad(frameDt * 1000);
     updateControllers(frameDt * 1000);
     if (state === 'countdown') {
       const left = (countdownEndMs - nowMs()) / 1000;           // coche retenido: la simulación no avanza
@@ -408,9 +439,12 @@ async function start(): Promise<void> {
     updateScene(gs, pose.x, pose.y, pose.z, pose.yaw);
     if (inVr) gs.sky.position.copy(vrAnchor.position);          // en VR camera.position es local a la cabeza
     audio.update(cs, camDt);
-    if (client && source === wheel && state === 'racing') {
+    if (state === 'racing' && ((client && source === wheel) || source === gamepadSource)) {
       const fk = fxPlanner.plan(frameEvents, cs, nowMs());
-      if (fk) { client.send(encode({ t: 'fx', k: fk })); fxSent[fk]++; }
+      if (fk) {
+        if (source === gamepadSource) gamepadSource.rumble(fk);
+        else if (client) { client.send(encode({ t: 'fx', k: fk })); fxSent[fk]++; }
+      }
     }
 
     particles.update(cs, pose, sim.state.t);

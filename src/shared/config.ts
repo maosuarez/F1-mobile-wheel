@@ -78,6 +78,8 @@ export const config = {
   vr:    { framebufferScale: 0.8, foveation: 1, triggerDeadzone: 0.05, steerRangeRad: 1.05, steerRampPerS: 1 / 0.18,
            hudDistanceM: 1.2, hudSizeM: [0.6, 0.3] as [number, number], hudRedrawHz: 10,
            stickShiftOn: 0.7, stickShiftOff: 0.3 },
+  // Mando USB (b10, design D3)
+  gamepad: { stickDeadzone: 0.08, triggerDeadzone: 0.05, steerExpo: 1.4 },
   // Volante móvil (b3, design D5)
   wheel: { steerSign: 1, rangeDeg: 60, deadzoneDeg: 1.5, curveK: 0.35, flatThreshold: 3,
            oneEuro: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 }, sendHz: 60,
