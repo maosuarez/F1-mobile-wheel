@@ -2,6 +2,7 @@ import { config, type GameConfig } from '../../shared/config';
 import type { DriverCommand, DriverInput, SimState } from '../../sim/types';
 import type { WheelLink } from '../net/wheelSource';
 import type { InputSource } from './types';
+import { holdDetector, type HoldDetector } from '../../shared/hold';
 import { mapControllers, rollFromQuaternion, stickShiftEdges, type StickShiftState } from './vrControllersMap';
 
 // Lo mínimo de renderer.xr (WebXRManager) que necesita la fuente
@@ -55,23 +56,30 @@ export class VrControllersSource implements InputSource {
 
   // Botones A (derecho) y X (izquierdo): buttons[4] en el mapeo xr-standard. Se sondea cada fotograma
   // en VR, también en pausa (read() solo corre en carrera)
-  pollButtons(): VrButtonEvent[] {
+  // B (derecho) e Y (izquierdo), buttons[5]: reinicio con pulsación sostenida (b9)
+  pollButtons(dtMs = 0): VrButtonEvent[] {
     const cur = { a: false, x: false };
+    let b = false, y = false;
     const session = this.xr.getSession();
     if (session) for (const src of session.inputSources) {
       const pressed = src.gamepad?.buttons[4]?.pressed ?? false;
-      if (src.handedness === 'right') cur.a = pressed;
-      else if (src.handedness === 'left') cur.x = pressed;
+      const second = src.gamepad?.buttons[5]?.pressed ?? false;
+      if (src.handedness === 'right') { cur.a = pressed; b = second; }
+      else if (src.handedness === 'left') { cur.x = pressed; y = second; }
     }
     const ev = buttonEdges(this.prevButtons, cur);
     this.prevButtons = cur;
+    const holdR = this.holdRight.update(b, dtMs), holdL = this.holdLeft.update(y, dtMs);
+    if (holdR || holdL) ev.push('restart');
     return ev;
   }
+  private holdRight: HoldDetector = holdDetector(config.race.restartHoldMs);
+  private holdLeft: HoldDetector = holdDetector(config.race.restartHoldMs);
   private prevButtons: VrButtons = { a: false, x: false };
 }
 
 export interface VrButtons { a: boolean; x: boolean }
-export type VrButtonEvent = 'pause' | 'recenter';
+export type VrButtonEvent = 'pause' | 'recenter' | 'restart';
 
 // Flanco de subida: mantener un botón genera un solo evento
 export function buttonEdges(prev: VrButtons, cur: VrButtons): VrButtonEvent[] {

@@ -73,7 +73,7 @@ export const config = {
   fx:     { minGapMs: 80, kerbRepeatMs: 120, grassRepeatMs: 300, limiterRepeatMs: 100, minSpeedKmh: 20 },
   // Red y emparejamiento con el volante (b3, design D4)
   net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000 },
-  race:  { countdownS: 3 },
+  race:  { countdownS: 3, restartHoldMs: 1000 },
   // Modo VR (b7, design D10). steerRampPerS = 1 / keyboard.steerRiseS (misma rampa que el teclado); distancias en metros
   vr:    { framebufferScale: 0.8, foveation: 1, triggerDeadzone: 0.05, steerRangeRad: 1.05, steerRampPerS: 1 / 0.18,
            hudDistanceM: 1.2, hudSizeM: [0.6, 0.3] as [number, number], hudRedrawHz: 10,

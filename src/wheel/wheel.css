@@ -79,7 +79,7 @@ button { font: inherit; color: inherit; touch-action: none; user-select: none; -
 .strip-info { justify-content: space-between; color: var(--dim); }
 .strip-info b { color: var(--text); font-variant-numeric: tabular-nums; }
 
-.buttons { flex: 0 0 44px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+.buttons { flex: 0 0 44px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .btn {
   min-width: 0; padding: 0 2px; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(#222a33, #171c22);
   font-size: 12px; font-weight: 700; letter-spacing: .04em;
@@ -87,6 +87,8 @@ button { font: inherit; color: inherit; touch-action: none; user-select: none; -
 .btn.pressed, .paddle.pressed { background: var(--amber); color: #1a1200; border-color: var(--amber); }
 .paddle.pressed span, .paddle.pressed small { color: #1a1200; }
 .btn[aria-pressed="false"] { color: var(--dim); }
+.btn-restart { font-size: 10px; --hold: 0; background: linear-gradient(90deg, #ff5a3c calc(var(--hold) * 100%), transparent 0), linear-gradient(#222a33, #171c22); }
+.btn-restart.pressed { color: #fff; border-color: #ff5a3c; }
 
 .cover { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #090b0ee6; z-index: 10; }
 .cover[hidden] { display: none; }

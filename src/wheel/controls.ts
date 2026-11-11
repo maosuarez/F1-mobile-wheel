@@ -1,4 +1,6 @@
 import type { EvKey } from '../shared/protocol';
+import { holdDetector } from '../shared/hold';
+import { config } from '../shared/config';
 import { pedalValue } from './pedals';
 
 // Controles táctiles (Pointer Events con captura): todos pueden usarse a la vez.
@@ -43,6 +45,38 @@ function press(target: HTMLElement, onDown: () => void, onUp?: () => void): void
   target.addEventListener('pointercancel', end);
 }
 
+// Pulsación sostenida: dispara una vez tras config.race.restartHoldMs; progreso visual con la variable CSS --hold
+function holdButton(target: HTMLElement, ms: number, onFire: () => void): void {
+  const det = holdDetector(ms);
+  let active: number | null = null, timer = 0, startedAt = 0;
+  const stop = () => {
+    clearInterval(timer);
+    active = null;
+    det.update(false, 0);
+    target.classList.remove('pressed');
+    target.style.setProperty('--hold', '0');
+  };
+  target.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (active !== null) return;
+    active = e.pointerId;
+    capture(target, e.pointerId);
+    target.classList.add('pressed');
+    startedAt = performance.now();
+    let last = startedAt;
+    timer = window.setInterval(() => {
+      const now = performance.now();
+      const fired = det.update(true, now - last);
+      last = now;
+      target.style.setProperty('--hold', String(Math.min(1, (now - startedAt) / ms)));
+      if (fired) onFire();
+    }, 30);
+  });
+  const end = (e: PointerEvent) => { if (e.pointerId === active) stop(); };
+  target.addEventListener('pointerup', end);
+  target.addEventListener('pointercancel', end);
+}
+
 function pedal(target: HTMLElement, set: (v: number) => void): void {
   const fill = target.querySelector<HTMLElement>('.pedal-fill')!;
   let active: number | null = null;
@@ -80,6 +114,7 @@ export function setupControls(cb: ControlCallbacks): void {
   press(el('btn-cam'), () => cb.onEv('cam'));
   press(el('btn-pause'), () => cb.onEv('pause'));
   press(el('btn-center'), () => { cb.onRecenter(); cb.onEv('recal'); });
+  holdButton(el('btn-restart'), config.race.restartHoldMs, () => cb.onEv('restart'));
   press(el('btn-ers'), () => cb.onErs(true), () => cb.onErs(false));
 
   const vib = el('btn-haptics');

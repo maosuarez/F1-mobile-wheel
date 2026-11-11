@@ -5,7 +5,7 @@ de texto tal cual. Solo inspecciona si un mensaje es {"t":"ping"} o {"t":"pong"}
 
 Protocolo (JSON, una línea por mensaje; espejo de src/shared/protocol.ts):
   in    volante -> host   60 Hz   seq, ts, steer[-1,1], thr[0,1], brk[0,1], ers(bool), rtt(num|null)
-  ev    volante -> host   evento  k: up | down | drs | cam | pause | recal
+  ev    volante -> host   evento  k: up | down | drs | cam | pause | recal | restart
   tel   host -> volante   20 Hz   spd, gear(-1=R,0=N,1-8), rpm, leds(0-16), drs(0|1|2), ers[0,1], ot,
                                   lap, delta, warn, echo(último ts recibido), hold(ms), dbg?{steer,thr,brk,gear}
   fx    host -> volante   evento  k: kerb | grass | limits | shift | limiter

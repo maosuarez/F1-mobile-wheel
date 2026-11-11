@@ -59,7 +59,7 @@ describe('protocolo: ida y vuelta', () => {
     expect(decodeAtHost(encode(noRtt))).toEqual(noRtt);
   });
   it('ev (todas las claves)', () => {
-    for (const k of ['up', 'down', 'drs', 'cam', 'pause', 'recal'] as const) {
+    for (const k of ['up', 'down', 'drs', 'cam', 'pause', 'recal', 'restart'] as const) {
       const m: EvMsg = { t: 'ev', k };
       expect(decodeAtHost(encode(m))).toEqual(m);
     }

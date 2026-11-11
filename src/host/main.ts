@@ -180,6 +180,17 @@ async function start(): Promise<void> {
     else if (state === 'paused' && pauseReason !== 'wheelLost') resume();
   };
 
+  // Reinicio (b9): solo en carrera o pausa de usuario; vuelve a parrilla con cuenta atrás. Sala, fuente y cámara no cambian
+  const restartRace = () => {
+    if (!(state === 'racing' || (state === 'paused' && pauseReason === 'user'))) return;
+    sim.reset();
+    bestSectors.fill(null);
+    syncPrev();
+    controllersSource.reset();
+    pauseReason = null;
+    startCountdown();
+  };
+
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyC' && !e.repeat) { rig.next(); return; }
     if (e.code === 'KeyV' && !e.repeat) { audio.setMuted(!audio.muted); return; }
@@ -194,6 +205,7 @@ async function start(): Promise<void> {
     for (const k of wheel.takeUiEvents() as EvKey[]) {
       if (k === 'pause' && source === wheel) togglePause();
       else if (k === 'cam') rig.next();
+      else if (k === 'restart' && source === wheel) restartRace();
     }
     if (source !== wheel) wheel.takeCommands();                 // órdenes sin efecto si no controla el volante
     const link = wheel.link();
@@ -206,10 +218,11 @@ async function start(): Promise<void> {
   };
 
   // Mandos VR (design D8): sustituyen al teclado solo en sesión VR y sin volante conectado; tras updateWheel
-  const updateControllers = () => {
+  const updateControllers = (dtMs: number) => {
     // Botones de los mandos en VR: A = pausa (como P), X = recolocar (como R)
-    if (inVr) for (const ev of controllersSource.pollButtons()) {
+    if (inVr) for (const ev of controllersSource.pollButtons(dtMs)) {
       if (ev === 'pause') togglePause();
+      else if (ev === 'restart') restartRace();
       else if (state === 'racing') { sim.recenter(); syncPrev(); }
     }
     const next = nextVrSource(source, keyboardSource, controllersSource, inVr, wheel ? wheel.link() : 'none');
@@ -345,7 +358,7 @@ async function start(): Promise<void> {
     }
 
     updateWheel();
-    updateControllers();
+    updateControllers(frameDt * 1000);
     if (state === 'countdown') {
       const left = (countdownEndMs - nowMs()) / 1000;           // coche retenido: la simulación no avanza
       if (left <= 0) { ui.setCountdown(null); stepper.reset(); setState('racing'); }

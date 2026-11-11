@@ -3,7 +3,7 @@
 // | Mensaje | Dirección      | Frecuencia | Campos                                                                 |
 // |---------|----------------|------------|------------------------------------------------------------------------|
 // | in      | volante -> PC  | 60 Hz      | seq, ts, steer [-1,1], thr [0,1], brk [0,1], ers, rtt (ms | null)       |
-// | ev      | volante -> PC  | al ocurrir | k: up | down | drs | cam | pause | recal                                |
+// | ev      | volante -> PC  | al ocurrir | k: up | down | drs | cam | pause | recal | restart                        |
 // | tel     | PC -> volante  | 20 Hz      | spd, gear [-1,8], rpm, leds [0,16], drs 0|1|2, ers [0,1], ot, lap,      |
 // |         |                |            | delta (s | null), warn (<=24), echo, hold (ms), dbg? {steer,thr,brk,gear}|
 // | fx      | PC -> volante  | al ocurrir | k: kerb | grass | limits | shift | limiter                             |
@@ -12,7 +12,7 @@
 
 export const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; export const ROOM_LENGTH = 4;
 export type Role = 'host' | 'wheel';
-export type EvKey = 'up' | 'down' | 'drs' | 'cam' | 'pause' | 'recal';
+export type EvKey = 'up' | 'down' | 'drs' | 'cam' | 'pause' | 'recal' | 'restart';
 export type FxKey = 'kerb' | 'grass' | 'limits' | 'shift' | 'limiter';
 export interface InMsg  { t: 'in'; seq: number; ts: number; steer: number; thr: number; brk: number; ers: boolean; rtt: number | null }
 export interface EvMsg  { t: 'ev'; k: EvKey }
@@ -24,7 +24,7 @@ export interface PeerMsg { t: 'peer'; role: Role; connected: boolean }
 export interface PingMsg { t: 'ping' }  export interface PongMsg { t: 'pong' }
 export type WheelToHost = InMsg | EvMsg;  export type HostToWheel = TelMsg | FxMsg;
 
-const EV_KEYS: readonly string[] = ['up', 'down', 'drs', 'cam', 'pause', 'recal'];
+const EV_KEYS: readonly string[] = ['up', 'down', 'drs', 'cam', 'pause', 'recal', 'restart'];
 const FX_KEYS: readonly string[] = ['kerb', 'grass', 'limits', 'shift', 'limiter'];
 const WARN_MAX = 24;
 

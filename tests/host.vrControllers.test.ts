@@ -165,6 +165,31 @@ describe('Botones de los mandos (flanco de subida)', () => {
     btn.x = false;
   });
 
+  it('B sostenido genera un solo restart; toque corto no; Y también', () => {
+    const b = { r: false, l: false };
+    const xr2: XrFrameProvider = {
+      getSession: () => ({ inputSources: [
+        { handedness: 'right', gamepad: { buttons: [{ value: 0 }, {}, {}, {}, {}, { pressed: b.r }] } },
+        { handedness: 'left', gamepad: { buttons: [{ value: 0 }, {}, {}, {}, {}, { pressed: b.l }] } },
+      ] }) as unknown as XRSession,
+      getFrame: () => null,
+      getReferenceSpace: () => null,
+    };
+    const src = new VrControllersSource(xr2);
+    const hold = config.race.restartHoldMs;
+    b.r = true;
+    expect(src.pollButtons(300)).toEqual([]);
+    b.r = false;
+    expect(src.pollButtons(16)).toEqual([]);                        // toque corto
+    b.r = true;
+    const ev = Array.from({ length: 30 }, () => src.pollButtons(hold / 10)).flat();
+    expect(ev).toEqual(['restart']);                                // un solo evento aunque siga pulsado
+    b.r = false; src.pollButtons(16);
+    b.l = true;
+    expect(src.pollButtons(hold)).toEqual(['restart']);
+    b.l = false;
+  });
+
   it('buttonEdges puro', () => {
     expect(buttonEdges({ a: false, x: false }, { a: true, x: true })).toEqual(['pause', 'recenter']);
     expect(buttonEdges({ a: true, x: true }, { a: true, x: true })).toEqual([]);
