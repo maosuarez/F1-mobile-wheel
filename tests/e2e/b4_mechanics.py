@@ -124,7 +124,7 @@ def main():
             w.click('[data-testid="tap-start"]')
             wait_racing(host)
             host.wait_for_function("window.__f1.snapshot().wheelLink === 'ok'", timeout=10000)
-            check("d: con volante el automático está desactivado", snap(host)["autoShift"] is False)
+            check("d: con volante el automático está activo", snap(host)["autoShift"] is True)
             t.down(1, *b3.pedal_point(w, "pedal-thr", 0.9))
             host.wait_for_function("window.__f1.snapshot().speedKmh > 20", timeout=60000)
             g0 = snap(host)["gear"]
@@ -147,7 +147,7 @@ def main():
                                    "--script", "lap", "--timeout", "400"], capture_output=True, text=True, timeout=450)
             print(proc.stdout[-300:], proc.stderr[-200:], flush=True)
             laps = re.findall(r"Vuelta (\d+) completada en ([\d.]+) s", proc.stdout)
-            check("d: fake_wheel --script lap completa la vuelta en manual", proc.returncode == 0 and bool(laps) and snap(h2)["autoShift"] is False,
+            check("d: fake_wheel --script lap completa la vuelta en automático", proc.returncode == 0 and bool(laps) and snap(h2)["autoShift"] is True,
                   f"exit={proc.returncode} laps={laps[-1:] }")
             ctx.close()
         step("d", d)

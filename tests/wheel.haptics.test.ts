@@ -35,6 +35,23 @@ describe('vibración', () => {
   });
 });
 
+describe('vibración sin soporte', () => {
+  it('no dispara si no hay soporte', () => {
+    const calls: (number | number[])[] = [];
+    const h = new Haptics(config.wheel.haptics, (p) => calls.push(p), () => 1000, false);
+    h.trigger('shift');
+    expect(h.supported).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+  it('con soporte, la preferencia apagada se respeta', () => {
+    const calls: (number | number[])[] = [];
+    const h = new Haptics(config.wheel.haptics, (p) => calls.push(p), () => 1000, true);
+    h.enabled = false;
+    h.trigger('kerb');
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('pedalValue', () => {
   const rect = { top: 100, height: 200 };
   it('abajo 0, arriba 1', () => {

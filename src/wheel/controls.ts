@@ -12,6 +12,8 @@ export interface ControlCallbacks {
   onEv: (k: EvKey) => void;
   onRecenter: () => void;
   onHaptics: () => boolean;           // devuelve el nuevo estado
+  hapticsSupported: boolean;
+  hapticsOn: boolean;                 // preferencia inicial
 }
 
 const el = (id: string) => {
@@ -111,18 +113,32 @@ export function setupControls(cb: ControlCallbacks): void {
   press(el('paddle-up'), () => cb.onEv('up'));
   press(el('paddle-down'), () => cb.onEv('down'));
   press(el('btn-drs'), () => cb.onEv('drs'));
-  press(el('btn-cam'), () => cb.onEv('cam'));
-  press(el('btn-pause'), () => cb.onEv('pause'));
-  press(el('btn-center'), () => { cb.onRecenter(); cb.onEv('recal'); });
+  const menu = el('menu-panel');
+  const toggle = el('btn-menu');
+  const setMenu = (open: boolean) => {
+    menu.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+  };
+  press(toggle, () => setMenu(menu.hidden === true));
+  press(el('btn-cam'), () => { cb.onEv('cam'); setMenu(false); });
+  press(el('btn-pause'), () => { cb.onEv('pause'); setMenu(false); });
+  press(el('btn-center'), () => { cb.onRecenter(); cb.onEv('recal'); setMenu(false); });
   holdButton(el('btn-restart'), config.race.restartHoldMs, () => cb.onEv('restart'));
   press(el('btn-ers'), () => cb.onErs(true), () => cb.onErs(false));
 
   const vib = el('btn-haptics');
-  press(vib, () => {
-    const on = cb.onHaptics();
+  const paintVib = (on: boolean) => {
     vib.setAttribute('aria-pressed', String(on));
     vib.textContent = on ? 'VIB: SÍ' : 'VIB: NO';
-  });
+  };
+  if (!cb.hapticsSupported) {
+    vib.textContent = 'VIB: N/D';
+    vib.setAttribute('aria-disabled', 'true');
+    vib.setAttribute('aria-pressed', 'false');
+  } else {
+    paintVib(cb.hapticsOn);
+    press(vib, () => paintVib(cb.onHaptics()));
+  }
 
   // Sin menú contextual, selección, zoom ni gestos del navegador
   for (const ev of ['contextmenu', 'selectstart', 'dblclick', 'gesturestart', 'dragstart']) {

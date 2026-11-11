@@ -109,7 +109,7 @@ SHALL existir una asistencia de cambio automático, activable en marcha, que sub
 - **THEN** el coche permanece en 1.ª en el limitador
 
 ### Requirement: Controles de marchas
-Con teclado, E SHALL subir marcha y Q SHALL bajar marcha. El jugador MUST NOT poder alternar entre cambio automático y manual en carrera: el modo SHALL quedar fijo según la fuente de entrada activa (volante celular = manual; teclado y mandos VR = automático). Con volante, las levas SHALL enviar las mismas órdenes que E y Q. Con los mandos VR, empujar la palanca analógica (derecha o izquierda) hacia delante SHALL emitir `shiftUp` y hacia atrás `shiftDown`, una vez por gesto. Con cualquier fuente, incluso en automático, las órdenes manuales SHALL permitir llegar a punto muerto y marcha atrás (de 1.ª: bajar → N → R) y volver a 1.ª (R → N → 1.ª); el automático nunca engrana N ni R por sí solo.
+Con teclado, E SHALL subir marcha y Q SHALL bajar marcha. El jugador MUST NOT poder alternar entre cambio automático y manual en carrera: el cambio SHALL ser automático con todas las fuentes de entrada (teclado, volante celular, mandos VR y gamepad). Con volante, las levas SHALL enviar las mismas órdenes que E y Q. Con los mandos VR, empujar la palanca analógica (derecha o izquierda) hacia delante SHALL emitir `shiftUp` y hacia atrás `shiftDown`, una vez por gesto. Con cualquier fuente, incluso en automático, las órdenes manuales SHALL permitir llegar a punto muerto y marcha atrás (de 1.ª: bajar → N → R) y volver a 1.ª (R → N → 1.ª); el automático nunca engrana N ni R por sí solo.
 
 #### Scenario: Teclado
 - **WHEN** con la asistencia desactivada se pulsa E una vez a 80 km/h en 1.ª
@@ -120,12 +120,16 @@ Con teclado, E SHALL subir marcha y Q SHALL bajar marcha. El jugador MUST NOT po
 - **THEN** `autoShift` sigue en `true` y no cambia ningún estado de la simulación
 
 #### Scenario: Modo fijo con volante
-- **WHEN** el volante celular pasa a ser la fuente activa
-- **THEN** `autoShift` es `false` mientras sea la fuente y ninguna entrada lo cambia
+- **WHEN** el volante celular pasa a ser la fuente activa y se acelera a fondo desde parado sin enviar órdenes
+- **THEN** `autoShift` es `true` y el coche sube de 1.ª a 2.ª por sí solo
 
 #### Scenario: Leva del volante
 - **WHEN** el volante envía un evento `up`
 - **THEN** la marcha sube una posición
+
+#### Scenario: Volante llega a neutro y marcha atrás
+- **WHEN** con el volante, parado en 1.ª, se envían dos eventos `down` separados por el corte de cambio
+- **THEN** la marcha pasa a 0 y luego a −1
 
 #### Scenario: Mandos VR llegan a neutro y marcha atrás
 - **WHEN** en sesión VR, parado en 1.ª, se empuja la palanca hacia atrás dos veces con un gesto cada una

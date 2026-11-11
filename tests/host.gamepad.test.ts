@@ -138,7 +138,7 @@ describe('nextGamepadSource (prioridad volante > VR > gamepad > teclado)', () =>
     const src = new GamepadSource(() => list);
     const si = new Simulation(makeStraightTrack({ lengthM: 2000, halfWidthM: 8 }), structuredClone(config));
     let source: InputSource = kb;
-    const setSource = (s: InputSource) => { source = s; si.assists.autoShift = s.name !== 'wheel'; };
+    const setSource = (s: InputSource) => { source = s; si.assists.autoShift = true; };
     const frame = () => {
       src.pollUi(16);
       const next = nextGamepadSource(source, kb, src, src.connected(), 'none', false);

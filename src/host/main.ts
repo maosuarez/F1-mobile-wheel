@@ -119,7 +119,7 @@ async function start(): Promise<void> {
   });
   const keyboardSource = new KeyboardInput(adapter);
   let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
-  const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = s.name !== 'wheel'; };
+  const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = true; };
   const controllersSource = new VrControllersSource(renderer.xr);
   const gamepadSource = new GamepadSource(() => navigator.getGamepads?.() ?? []);
 

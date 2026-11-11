@@ -79,6 +79,10 @@ def main():
             t0 = snap(host)["simTimeS"]
             check("racing con simTimeS > 0", t0 > 1.5, f"{t0:.2f}")
 
+            # REINICIAR vive en el menú ☰
+            w.click('[data-testid="btn-menu"]')
+            w.wait_for_selector('[data-testid="btn-restart"]', state="visible")
+
             # toque corto: nada
             hold(w, "btn-restart", 200)
             w.wait_for_timeout(600)

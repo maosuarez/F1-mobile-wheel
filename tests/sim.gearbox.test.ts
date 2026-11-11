@@ -167,6 +167,15 @@ describe('Marcha atrás y punto muerto', () => {
     expect(kmh(vMax)).toBeGreaterThan(50);
   });
 
+  it('en automático (volante), parado en 1.ª, bajar dos veces: N y luego R', () => {
+    const si = sim({ s: 1000, auto: true });
+    stepCmd(si, 'shiftDown', full());
+    expect(si.state.car.gear).toBe(0);
+    stepCmd(si, 'shiftDown', full());
+    runFor(si, 0.1, full());
+    expect(si.state.car.gear).toBe(-1);
+  });
+
   it('en N a 40 km/h, bajar se rechaza', () => {
     const si = sim({ v: ms(40), gear: 0 });
     const ev = stepCmd(si, 'shiftDown', full());

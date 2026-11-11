@@ -10,10 +10,11 @@ export class Haptics {
     private readonly h: GameConfig['wheel']['haptics'],
     private readonly vibrate: (p: number | number[]) => void,
     private readonly now: () => number,
+    readonly supported: boolean = true,
   ) {}
 
   trigger(k: FxKey): void {
-    if (!this.enabled) return;
+    if (!this.supported || !this.enabled) return;
     const pattern = this.h.patterns[k];
     if (!pattern) return;
     const t = this.now();

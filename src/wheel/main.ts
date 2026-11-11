@@ -20,7 +20,10 @@ const vibrations: number[][] = [];
 const haptics = new Haptics(w.haptics, (p) => {
   vibrations.push(Array.isArray(p) ? p : [p]);
   try { navigator.vibrate?.(p); } catch { /* sin vibración */ }
-}, () => performance.now());
+}, () => performance.now(), typeof navigator.vibrate === 'function');
+
+const HAPTICS_KEY = 'f1.wheel.haptics';
+try { if (localStorage.getItem(HAPTICS_KEY) === '0') haptics.enabled = false; } catch { /* sin almacenamiento */ }
 
 let state: State = 'tap';
 let steer = 0, thr = 0, brk = 0, ers = false;
@@ -93,7 +96,14 @@ setupControls({
   onErs: (on) => { ers = on; },
   onEv: (k) => net?.sendEv(k),
   onRecenter: () => estimator.recenter(),
-  onHaptics: () => (haptics.enabled = !haptics.enabled),
+  onHaptics: () => {
+    if (!haptics.supported) return false;
+    haptics.enabled = !haptics.enabled;
+    try { localStorage.setItem(HAPTICS_KEY, haptics.enabled ? '1' : '0'); } catch { /* sin almacenamiento */ }
+    return haptics.enabled;
+  },
+  hapticsSupported: haptics.supported,
+  hapticsOn: haptics.enabled,
 });
 
 document.querySelector('[data-testid="tap-start"]')!.addEventListener('click', start);
