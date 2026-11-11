@@ -1,3 +1,4 @@
+import type { FxKey } from '../shared/protocol';
 import type { DriverInput } from '../sim/types';
 
 export interface DebugSnapshot {
@@ -8,6 +9,9 @@ export interface DebugSnapshot {
   room: string | null; wheelLink: string; rttMs: number | null;
   gear: number; rpm: number; leds: number; drs: number; ers: number; ot: boolean; autoShift: boolean; lapValid: boolean; warn: string; overheated: boolean;
   inputApplied: { steer: number; thr: number; brk: number; ers: boolean }; pauseReason: string | null;
+  audio: { state: string; f0Hz: number; rms: number; peak: number } | null;
+  camera: { mode: string; fovDeg: number; shakeM: number; pos: [number, number, number]; tvIndex: number };
+  fxSent: Record<FxKey, number>;
 }
 
 // Expone window.__f1 (solo lectura) únicamente con ?debug=1

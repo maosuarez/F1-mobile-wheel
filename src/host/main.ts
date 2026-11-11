@@ -5,7 +5,11 @@ import { Simulation } from '../sim/simulation';
 import { NEUTRAL_INPUT, type DriverInput } from '../sim/types';
 import { createRenderer, createScene, resize } from '../render/scene';
 import { buildCar } from '../render/car';
-import { ChaseCamera } from '../render/chaseCamera';
+import { CameraRig } from '../render/cameras/rig';
+import { EngineAudio } from '../audio/engine';
+import { FxPlanner } from './net/fx';
+import type { FxKey, EvKey } from '../shared/protocol';
+import type { SimEvent } from '../sim/types';
 import { FixedStepper } from './loop';
 import { Hud } from './hud';
 import { DebugPanel } from './debugPanel';
@@ -34,9 +38,11 @@ const timescale = debug && Number.isFinite(tsRaw) && tsRaw >= 1 ? Math.min(16, t
 const $ = (id: string) => document.getElementById(id)!;
 let state: GameState = 'loading';
 let pauseReason: PauseReason | null = null;
+let audioRef: EngineAudio | null = null;
 
 function setState(s: GameState): void {
   state = s;
+  audioRef?.setPaused(s !== 'racing');
   $('overlay-loading').hidden = s !== 'loading';
   $('overlay-pairing').hidden = s !== 'pairing';
   $('overlay-pause').hidden = !(s === 'paused' && pauseReason !== 'wheelLost');
@@ -68,7 +74,15 @@ async function start(): Promise<void> {
   const { scene, camera } = createScene(track);
   const car = buildCar();
   scene.add(car);
-  const chase = new ChaseCamera(camera);
+  const rig = new CameraRig(camera, track, config);
+  const audio = new EngineAudio(config);
+  audioRef = audio;
+  audio.setPaused(true);
+  const fxPlanner = new FxPlanner(config.fx);
+  const fxSent: Record<FxKey, number> = { kerb: 0, grass: 0, limits: 0, shift: 0, limiter: 0 };
+  const unlockAudio = () => { void audio.start().catch(() => { /* sin audio */ }); };
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
   const hud = new Hud();
   const panel = new DebugPanel();
   hud.show(true);
@@ -145,6 +159,8 @@ async function start(): Promise<void> {
   };
 
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyC' && !e.repeat) { rig.next(); return; }
+    if (e.code === 'KeyV' && !e.repeat) { audio.setMuted(!audio.muted); return; }
     if (e.code === 'F3') { e.preventDefault(); panel.toggle(); return; }
     if (state === 'pairing' && (e.code === 'Enter' || e.code === 'NumpadEnter')) { setSource(keyboardSource); startCountdown(); }
   });
@@ -153,7 +169,10 @@ async function start(): Promise<void> {
   // Estado del volante: toma de control, eventos de interfaz, pérdida y reanudación
   const updateWheel = () => {
     if (!wheel) return;
-    for (const k of wheel.takeUiEvents()) if (k === 'pause' && source === wheel) togglePause();
+    for (const k of wheel.takeUiEvents() as EvKey[]) {
+      if (k === 'pause' && source === wheel) togglePause();
+      else if (k === 'cam') rig.next();
+    }
     if (source !== wheel) wheel.takeCommands();                 // órdenes sin efecto si no controla el volante
     const link = wheel.link();
     if (link === 'ok') {
@@ -195,7 +214,7 @@ async function start(): Promise<void> {
         gear: c.gear, rpm: c.rpm, leds: c.leds, drs: c.drs, ers: c.ersCharge, ot: c.overtake,
         autoShift: sim.assists.autoShift, lapValid: t.lapValid, warn: warnings.current(sim.state, sim.state.t), overheated: c.overheated,
         inputApplied: { steer: lastInput.steer, thr: lastInput.throttle, brk: lastInput.brake, ers: lastInput.ers },
-        pauseReason,
+        pauseReason, audio: audio.debug(), camera: rig.debug(), fxSent: { ...fxSent },
       };
     });
   }
@@ -225,6 +244,7 @@ async function start(): Promise<void> {
     } else ui.setCountdown(null);
 
     let alpha = 1;
+    const frameEvents: SimEvent[] = [];
     if (state === 'racing') {
       const r = stepper.advance(frameDt, timescale);
       alpha = r.alpha;
@@ -234,6 +254,8 @@ async function start(): Promise<void> {
         lastInput = source.read(dt, sim.state);
         const events = sim.step(lastInput, source.takeCommands());
         for (const ev of events) {
+          frameEvents.push(ev);
+          audio.onEvent(ev);
           warnings.push(ev, sim.state.t);
           if (ev.type === 'sector') { const b = bestSectors[ev.index]; if (b === null || ev.timeS < b!) bestSectors[ev.index] = ev.timeS; }
           if (ev.type === 'wallHit') wallHits++;
@@ -255,10 +277,16 @@ async function start(): Promise<void> {
       z: prev.z + (cur.z - prev.z) * k, yaw: prev.yaw + dy * k,
     };
     const cs = sim.state.car;
+    const camDt = state === 'racing' ? frameDt : 0;
     car.position.set(pose.x, pose.y, pose.z);
     car.rotation.order = 'YZX';
     car.rotation.set(0, pose.yaw, cs.pitch);
-    chase.update(pose, state === 'racing' ? frameDt : 0);
+    rig.update({ ...pose, pitch: cs.pitch, roll: cs.roll }, cs, camDt, sim.state.t);
+    audio.update(cs, camDt);
+    if (client && source === wheel && state === 'racing') {
+      const fk = fxPlanner.plan(frameEvents, cs, nowMs());
+      if (fk) { client.send(encode({ t: 'fx', k: fk })); fxSent[fk]++; }
+    }
 
     renderer.render(scene, camera);
     const info = renderer.info.render;

@@ -74,3 +74,14 @@ describe('Simulación determinista a paso fijo', () => {
     expect(r.wallHits).toBeGreaterThan(0);
   });
 });
+
+describe('aislamiento de src/sim', () => {
+  it('no importa de render, audio ni host', () => {
+    const files = (import.meta as unknown as { glob: (p: string, o: object) => Record<string, string> })
+      .glob('../src/sim/**/*.ts', { query: '?raw', import: 'default', eager: true });
+    const names = Object.keys(files);
+    expect(names.length).toBeGreaterThan(0);
+    const bad = /(?:^|\s)(?:import|export)\b[^;]*?\bfrom\s*['"][^'"]*\/(?:render|audio|host)(?:\/|['"])|^\s*import\s*['"][^'"]*\/(?:render|audio|host)(?:\/|['"])/m;
+    for (const n of names) expect(bad.test(files[n]), n).toBe(false);
+  });
+});

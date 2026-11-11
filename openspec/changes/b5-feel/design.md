@@ -22,7 +22,7 @@ camera: { defaultMode: 'helmet' as 'helmet' | 'chase' | 'tv', fovMinDeg: 70, fov
           chase: { distM: 7.5, heightM: 2.6, lookAheadM: 8, omega: 9, velocityBlend: 0.7 },
           helmet: { offset: [0.15, 0.82, 0], rollDegPerG: 1.0, pitchDegPerG: 0.6, maxDeg: 6, lookSteerDeg: 5, omega: 14 },
           tv: { spacingM: 300, heightM: 7, outsideM: 10, leadM: 20, minFovDeg: 6, maxFovDeg: 50, frameWidthM: 14 },
-          shake: { kerbM: 0.03, grassM: 0.05, highSpeedM: 0.012, highSpeedKmh: 250, highSpeedRefKmh: 330, hz: [17, 23, 31] } },
+          shake: { kerbM: 0.03, grassM: 0.05, surfaceRefKmh: 100, highSpeedM: 0.012, highSpeedKmh: 250, highSpeedRefKmh: 330, hz: [17, 23, 31] } },
 fx:     { minGapMs: 80, kerbRepeatMs: 120, grassRepeatMs: 300, limiterRepeatMs: 100, minSpeedKmh: 20 },
 ```
 
@@ -68,11 +68,11 @@ export class CameraRig { constructor(camera: THREE.PerspectiveCamera, track: Tra
   debug(): { mode: CameraMode; fovDeg: number; shakeM: number; pos: [number, number, number]; tvIndex: number } }
 ```
 
-- **Persecución:** tres `CriticalSpring` (x, y, z) hacia `pose − dir·distM + altura`, con `dir` = mezcla (`velocityBlend`) entre rumbo y dirección de la velocidad (solo si `speed > 5 m/s`). Mira a `pose + dirVelocidad·lookAheadM`.
+- **Persecución:** tres `CriticalSpring` (x, y, z) sobre el desplazamiento cámara−coche en ejes de mundo (no sobre la posición absoluta, que a 300 km/h retrasaría la cámara `2v/ω` ≈ 18 m), hacia `−dir·distM + altura`; posición = `pose` + desplazamiento. Con `dir` = mezcla (`velocityBlend`) entre rumbo y dirección de la velocidad (solo si `speed > 5 m/s`). Mira a `pose + dirVelocidad·lookAheadM`.
 - **Casco:** posición = `pose` + `offset` en ejes del coche, sin resorte de posición; resortes (`helmet.omega`) sobre el balanceo `−aLat/g·rollDegPerG` y el cabeceo `−aLong/g·pitchDegPerG`, recortados a `maxDeg`; guiñada extra `steer·lookSteerDeg`. `near = 0.1`.
-- **TV:** cámara i en `s_i = (i + 1)·spacing − leadM`, desplazada `wl + outsideM` a la izquierda y `heightM` sobre la pista; activa la del tramo `floor(s / spacing)`; el número de cámaras es `round(length / spacingM)` y el espaciado real `length / n`. `tvFovDeg` devuelve el FOV vertical que encuadra `frameWidthM` de ancho a esa distancia con aspecto 16:9 (`2·atan(frameWidthM / (2·dist·16/9))`), recortado a `[minFovDeg, maxFovDeg]`.
+- **TV:** cámara i en `s_i = (i + 1)·spacing − leadM`, desplazada `wl + outsideM` a la izquierda y `heightM` sobre la pista; activa la `floor((s + leadM) / spacing) mod n`, de modo que el cambio ocurre justo al superar el `s` de la cámara activa; el número de cámaras es `round(length / spacingM)` y el espaciado real `length / n`. `tvFovDeg` devuelve el FOV vertical que encuadra `frameWidthM` de ancho a esa distancia con aspecto 16:9 (`2·atan(frameWidthM / (2·dist·16/9))`), recortado a `[minFovDeg, maxFovDeg]`.
 - Modo inicial `camera.defaultMode` (primera persona); `next()` recorre `helmet → chase → tv`. Si el coche provisional tapa la vista de casco, ajustar solo `helmet.offset`.
-- Al cambiar de modo: `snap` de todos los resortes al objetivo. El temblor se suma en el espacio de la cámara tras calcular la pose; `tS` es el tiempo de simulación (determinista).
+- Al cambiar de modo: `snap` de todos los resortes al objetivo. El temblor se suma en el espacio de la cámara tras calcular la pose, solo en persecución y casco (las de TV son fijas); el de piano y hierba escala linealmente con la velocidad hasta `shake.surfaceRefKmh` (0 con el coche parado); `tS` es el tiempo de simulación (determinista).
 - `main.ts`: C y `ev cam` → `rig.next()`. `src/render/chaseCamera.ts` se elimina.
 
 ### D4. Háptica (`src/host/net/fx.ts`)
