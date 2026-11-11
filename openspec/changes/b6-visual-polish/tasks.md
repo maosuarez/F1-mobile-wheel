@@ -13,7 +13,7 @@
 
 ## 3. Monoplaza (worker-sonnet, skills `threejs-geometry`, `threejs-materials`)
 
-- [ ] 3.1 Reescribir `src/render/car.ts` y crear `src/render/carMaterials.ts` (design D3) con `CarVisual` y `update`. Test `tests/render.car.test.ts` (Node): scenarios "Partes presentes", "Proporciones", "Ruedas delanteras", "Giro de las ruedas", "DRS visible" y "Coste del coche" (contar mallas y triángulos del grupo). Adaptar `main.ts` a `CarVisual.update`. Sin logos, nombres ni decoraciones reales. Verificación: `npx vitest run tests/render.car.test.ts` y `npm run build`.
+- [ ] 3.1 Reescribir `src/render/car.ts` y crear `src/render/carMaterials.ts` (design D3) con `CarVisual` y `update`. Test `tests/render.car.test.ts` (Node): scenarios "Partes presentes", "Proporciones", "Ruedas delanteras", "Giro de las ruedas", "DRS visible", "Volante solidario con la dirección" y "Coste del coche" (contar mallas y triángulos del grupo). Adaptar `main.ts` a `CarVisual.update`. Sin logos, nombres ni decoraciones reales. Verificación: `npx vitest run tests/render.car.test.ts` y `npm run build`.
 
 ## 4. Superficies (worker-sonnet, skills `threejs-textures`, `threejs-materials`)
 
@@ -34,7 +34,7 @@
 
 ## 8. Verificación automática (worker-sonnet, skills `webapp-testing`, `threejs-qa-release`)
 
-- [ ] 8.1 `tests/e2e/b6_visual.py` (design D8), fallando ante errores o avisos de WebGL en consola: (a) 8 capturas de referencia `out/b6_grid.png`, `b6_senna.png`, `b6_sol.png`, `b6_bico.png`, `b6_juncao.png`, `b6_straight.png`, `b6_helmet.png`, `b6_tv.png` (los `s` se leen de `corners` del JSON); (b) scenarios "Sombra del coche" y "Exposición correcta" con `__f1.pixels`; (c) "Posproceso activo" (esquinas 5–30 % más oscuras); (d) vuelta completa con `autopilot=1&timescale=8` en `chase`, `helmet` y `tv`: `maxDrawCalls < 200`, `maxTriangles < 600000`, `shadowLights = 1`, `shadowMapSize ≤ 2048`, `dpr ≤ 1.5`; (e) "Selección manual" y "Diferencias medibles" de niveles; (f) "Carga": parrilla visible en < 5 s. Verificación: el script sale con código 0.
+- [ ] 8.1 `tests/e2e/b6_visual.py` (design D8), fallando ante errores o avisos de WebGL en consola: (a) 8 capturas de referencia: seis en primera persona `out/b6_grid.png`, `b6_senna.png`, `b6_sol.png`, `b6_bico.png`, `b6_juncao.png`, `b6_straight.png`, más `b6_chase.png` y `b6_tv.png`; y scenario "Elementos del habitáculo" (fracción de pista visible con `__f1.pixels`) (los `s` se leen de `corners` del JSON); (b) scenarios "Sombra del coche" y "Exposición correcta" con `__f1.pixels`; (c) "Posproceso activo" (esquinas 5–30 % más oscuras); (d) vuelta completa con `autopilot=1&timescale=8` en `chase`, `helmet` y `tv`: `maxDrawCalls < 200`, `maxTriangles < 600000`, `shadowLights = 1`, `shadowMapSize ≤ 2048`, `dpr ≤ 1.5`; (e) "Selección manual" y "Diferencias medibles" de niveles; (f) "Carga": parrilla visible en < 5 s. Verificación: el script sale con código 0.
 - [ ] 8.2 `tests/e2e/b6_perf.py` (design D8). Verificación: sale 0 con media ≥ 55 y p5 ≥ 45 imprimiendo `rendererName` y el nivel final, o sale 2 imprimiendo `SIN GPU` (entonces queda pendiente 9.1).
 
 ## 9. Cierre

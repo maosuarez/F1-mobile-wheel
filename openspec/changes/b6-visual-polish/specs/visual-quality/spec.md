@@ -26,7 +26,7 @@ El coche SHALL reconocerse como un monoplaza moderno: morro, alerón delantero y
 
 #### Scenario: Partes presentes
 - **WHEN** se inspecciona el modelo del coche
-- **THEN** existen los elementos con nombre `nose`, `front-wing`, `rear-wing`, `rear-wing-flap`, `sidepods`, `airbox`, `halo`, `floor` y cuatro ruedas `wheel-fl`, `wheel-fr`, `wheel-rl`, `wheel-rr`
+- **THEN** existen los elementos con nombre `nose`, `front-wing`, `rear-wing`, `rear-wing-flap`, `sidepods`, `airbox`, `halo`, `floor`, `cockpit`, `steering-wheel`, `suspension` y cuatro ruedas `wheel-fl`, `wheel-fr`, `wheel-rl`, `wheel-rr`
 
 #### Scenario: Proporciones
 - **WHEN** se mide la caja envolvente del coche
@@ -35,6 +35,21 @@ El coche SHALL reconocerse como un monoplaza moderno: morro, alerón delantero y
 #### Scenario: Reflejos
 - **WHEN** se captura el coche al sol
 - **THEN** la carrocería muestra reflejos del entorno y un brillo especular visible, y los neumáticos se ven mates
+
+### Requirement: Habitáculo en primera persona
+Como la vista principal es la del piloto, el coche SHALL verse creíble desde dentro: borde del habitáculo, halo con su pilar central, volante con pantalla que gira con la dirección, y las ruedas delanteras con sus brazos de suspensión visibles a los lados. Las proporciones SHALL seguir las de un monoplaza real (batalla ≈ 3,6 m, ancho 2,0 m, ruedas de ≈ 0,72 m de diámetro).
+
+#### Scenario: Elementos del habitáculo
+- **WHEN** se captura la cámara de casco en la parrilla
+- **THEN** se ven el halo, el volante, el borde del habitáculo y las dos ruedas delanteras, y la pista sigue visible entre el halo y el volante en al menos el 35 % de la imagen
+
+#### Scenario: Volante solidario con la dirección
+- **WHEN** la orden de dirección es 0,5 a la derecha
+- **THEN** el volante del habitáculo está girado a la derecha de forma proporcional y las ruedas delanteras viran en el mismo sentido
+
+#### Scenario: Sin recortes
+- **WHEN** el coche frena a 4 g y gira a 4 g con la cámara de casco
+- **THEN** ninguna pieza del coche atraviesa el plano cercano de la cámara
 
 ### Requirement: Coche animado según la simulación
 Las ruedas SHALL girar según la velocidad, las delanteras SHALL virar según el ángulo de dirección, la carrocería SHALL cabecear y balancear levemente con las fuerzas g, y el plano móvil del alerón trasero SHALL abrirse cuando el DRS está abierto.
@@ -92,7 +107,7 @@ La imagen SHALL pasar por un posproceso ligero con resplandor en las zonas muy b
 - **THEN** las imágenes difieren, y la de posproceso tiene las esquinas entre un 5 % y un 30 % más oscuras
 
 ### Requirement: Revisión visual con rúbrica
-El resultado SHALL revisarse sobre capturas de referencia (parrilla, S do Senna, Curva do Sol, Bico de Pato, Junção, recta principal, casco y TV) con la rúbrica de 10 categorías de la skill `threejs-aaa-graphics-builder`.
+El resultado SHALL revisarse sobre capturas de referencia tomadas en primera persona (parrilla, S do Senna, Curva do Sol, Bico de Pato, Junção, recta principal) más una de persecución y una de TV, comparándolas con imágenes de a bordo de un monoplaza real, con la rúbrica de 10 categorías de la skill `threejs-aaa-graphics-builder`.
 
 #### Scenario: Nota mínima
 - **WHEN** el orquestador puntúa las 8 capturas de referencia

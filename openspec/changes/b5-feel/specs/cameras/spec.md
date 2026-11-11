@@ -7,11 +7,15 @@ Cámaras que transmiten velocidad y fuerzas: persecución, casco y televisión, 
 ## ADDED Requirements
 
 ### Requirement: Cambio de cámara
-El jugador SHALL poder alternar entre persecución, casco y TV, en ese orden cíclico, con la tecla C o con el evento `cam` del volante. El cambio es un corte inmediato, sin barrido.
+El juego SHALL arrancar en primera persona (cámara de casco) y el jugador SHALL poder alternar entre casco, persecución y TV, en ese orden cíclico, con la tecla C o con el evento `cam` del volante. El cambio es un corte inmediato, sin barrido.
+
+#### Scenario: Primera persona por defecto
+- **WHEN** se abre el juego y empieza la carrera
+- **THEN** el modo de cámara es casco
 
 #### Scenario: Ciclo completo
-- **WHEN** se pulsa C tres veces desde la cámara de persecución
-- **THEN** el modo pasa por casco, TV y vuelve a persecución
+- **WHEN** se pulsa C tres veces desde la cámara de casco
+- **THEN** el modo pasa por persecución, TV y vuelve a casco
 
 #### Scenario: Desde el volante
 - **WHEN** el volante envía `ev` con `k = "cam"`
@@ -42,6 +46,10 @@ La cámara de persecución SHALL seguir al coche por detrás con un resorte crí
 
 ### Requirement: Cámara de casco
 La cámara de casco SHALL situarse en la posición del piloto, girar con el coche y balancearse levemente según las fuerzas g laterales y longitudinales.
+
+#### Scenario: Vista desde el habitáculo
+- **WHEN** el coche está en la parrilla con la cámara de casco
+- **THEN** en la mitad inferior de la imagen se ven el morro y las dos ruedas delanteras, la pista ocupa el centro, y ninguna pieza del coche atraviesa el plano cercano de la cámara
 
 #### Scenario: Balanceo en curva
 - **WHEN** el coche sostiene 4 g laterales hacia la izquierda
