@@ -1,5 +1,5 @@
-import type { GameConfig } from '../../shared/config';
-import type { DriverInput } from '../../sim/types';
+import { config, type GameConfig } from '../../shared/config';
+import type { DriverCommand, DriverInput } from '../../sim/types';
 
 // Lectura plana de los mandos (sin WebXR) para que el mapeo sea testeable
 export interface VrControllersState {
@@ -40,4 +40,16 @@ export function mapControllers(state: VrControllersState, dtS: number, cfg: VrCf
     brake: applyDeadzone(state.leftTrigger, cfg.triggerDeadzone),
     ers: false,
   };
+}
+
+// Palanca analógica como cambio secuencial: un gesto = una orden, con histéresis
+export interface StickShiftState { latched: boolean }
+
+// y = gamepad.axes[3] (negativo = hacia delante → shiftUp; positivo = hacia atrás → shiftDown)
+export function stickShiftEdges(prev: StickShiftState, y: number, cfg: Pick<VrCfg, 'stickShiftOn' | 'stickShiftOff'> = config.vr):
+  { state: StickShiftState; cmd: DriverCommand | null } {
+  const v = Number.isFinite(y) ? y : 0;
+  if (prev.latched) return { state: { latched: Math.abs(v) >= cfg.stickShiftOff }, cmd: null };
+  if (Math.abs(v) >= cfg.stickShiftOn) return { state: { latched: true }, cmd: v < 0 ? 'shiftUp' : 'shiftDown' };
+  return { state: prev, cmd: null };
 }

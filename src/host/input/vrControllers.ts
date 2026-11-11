@@ -2,7 +2,7 @@ import { config, type GameConfig } from '../../shared/config';
 import type { DriverCommand, DriverInput, SimState } from '../../sim/types';
 import type { WheelLink } from '../net/wheelSource';
 import type { InputSource } from './types';
-import { mapControllers, rollFromQuaternion } from './vrControllersMap';
+import { mapControllers, rollFromQuaternion, stickShiftEdges, type StickShiftState } from './vrControllersMap';
 
 // Lo mínimo de renderer.xr (WebXRManager) que necesita la fuente
 export interface XrFrameProvider {
@@ -15,18 +15,23 @@ export interface XrFrameProvider {
 export class VrControllersSource implements InputSource {
   readonly name = 'controllers' as const;
   private steer = 0;
+  private stick: StickShiftState = { latched: false };
+  private pending: DriverCommand[] = [];
 
   constructor(private readonly xr: XrFrameProvider, private readonly cfg: GameConfig['vr'] = config.vr) {}
 
   read(dtS: number, _state?: SimState): DriverInput {
     let rightTrigger = 0, leftTrigger = 0;
     let rightRollRad: number | null = null;
+    let stickY = 0;
     const session = this.xr.getSession();
     if (session) {
       const frame = this.xr.getFrame();
       const ref = this.xr.getReferenceSpace();
       for (const src of session.inputSources) {
         const trigger = src.gamepad?.buttons[0]?.value ?? 0;
+        const y = src.gamepad?.axes?.[3] ?? 0;
+        if (Math.abs(y) > Math.abs(stickY)) stickY = y;
         if (src.handedness === 'right') {
           rightTrigger = trigger;
           if (frame && ref && src.gripSpace) {
@@ -36,14 +41,17 @@ export class VrControllersSource implements InputSource {
         } else if (src.handedness === 'left') leftTrigger = trigger;
       }
     }
+    const sh = stickShiftEdges(this.stick, stickY, this.cfg);
+    this.stick = sh.state;
+    if (sh.cmd) this.pending.push(sh.cmd);
     const input = mapControllers({ rightTrigger, leftTrigger, rightRollRad, prevSteer: this.steer }, dtS, this.cfg);
     this.steer = input.steer;
     return input;
   }
 
-  takeCommands(): DriverCommand[] { return []; }
+  takeCommands(): DriverCommand[] { const c = this.pending; this.pending = []; return c; }
 
-  reset(): void { this.steer = 0; }
+  reset(): void { this.steer = 0; this.stick = { latched: false }; this.pending = []; }
 
   // Botones A (derecho) y X (izquierdo): buttons[4] en el mapeo xr-standard. Se sondea cada fotograma
   // en VR, también en pausa (read() solo corre en carrera)

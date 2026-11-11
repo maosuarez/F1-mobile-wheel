@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { config } from '../src/shared/config';
-import { applyDeadzone, mapControllers, rollFromQuaternion } from '../src/host/input/vrControllersMap';
+import { applyDeadzone, mapControllers, rollFromQuaternion, stickShiftEdges, type StickShiftState } from '../src/host/input/vrControllersMap';
 import { VrControllersSource, buttonEdges, controllersCanDrive, nextVrSource, type XrFrameProvider } from '../src/host/input/vrControllers';
 import type { InputSource } from '../src/host/input/types';
 import type { DriverInput } from '../src/sim/types';
+import { Simulation } from '../src/sim/simulation';
+import { makeStraightTrack } from '../src/track/synthetic';
 
 const cfg = config.vr;
 const dt = config.sim.dt;
@@ -167,5 +169,67 @@ describe('Botones de los mandos (flanco de subida)', () => {
     expect(buttonEdges({ a: false, x: false }, { a: true, x: true })).toEqual(['pause', 'recenter']);
     expect(buttonEdges({ a: true, x: true }, { a: true, x: true })).toEqual([]);
     expect(buttonEdges({ a: true, x: false }, { a: false, x: false })).toEqual([]);
+  });
+});
+
+describe('stickShiftEdges', () => {
+  const run = (ys: number[]) => {
+    let st: StickShiftState = { latched: false };
+    const cmds: (string | null)[] = [];
+    for (const y of ys) { const r = stickShiftEdges(st, y, cfg); st = r.state; if (r.cmd) cmds.push(r.cmd); }
+    return cmds;
+  };
+  it('adelante → shiftUp una vez; atrás → shiftDown una vez', () => {
+    expect(run([0, -0.9, 0])).toEqual(['shiftUp']);
+    expect(run([0, 0.9, 0])).toEqual(['shiftDown']);
+  });
+  it('mantener 20 fotogramas no repite', () => {
+    expect(run(Array(20).fill(-1))).toEqual(['shiftUp']);
+  });
+  it('rearme solo por debajo de 0.3 (histéresis)', () => {
+    expect(run([-1, -0.5, -1, -0.35, -1])).toEqual(['shiftUp']);
+    expect(run([-1, -0.2, -1])).toEqual(['shiftUp', 'shiftUp']);
+    expect(run([0.5, 0.6])).toEqual([]);   // bajo el umbral de activación
+  });
+});
+
+describe('VrControllersSource: palanca → órdenes de marcha', () => {
+  const axes = { l: 0, r: 0 };
+  const xr: XrFrameProvider = {
+    getSession: () => ({ inputSources: [
+      { handedness: 'right', gamepad: { buttons: [{ value: 0 }], axes: [0, 0, 0, axes.r] } },
+      { handedness: 'left', gamepad: { buttons: [{ value: 0 }], axes: [0, 0, 0, axes.l] } },
+    ] }) as unknown as XRSession,
+    getFrame: () => null,
+    getReferenceSpace: () => null,
+  };
+  const push = (src: VrControllersSource, which: 'l' | 'r', y: number) => {
+    axes[which] = y; src.read(dt); axes[which] = 0; src.read(dt);
+  };
+
+  it('vacía la cola y reset limpia la palanca', () => {
+    const src = new VrControllersSource(xr);
+    axes.r = -1; src.read(dt); src.read(dt);
+    expect(src.takeCommands()).toEqual(['shiftUp']);
+    expect(src.takeCommands()).toEqual([]);
+    src.reset(); src.read(dt);     // sigue empujada: tras reset cuenta como gesto nuevo
+    expect(src.takeCommands()).toEqual(['shiftUp']);
+    axes.r = 0; src.read(dt); src.takeCommands();
+  });
+
+  it('dos empujes atrás desde 1.ª parado: 1 → 0 → -1; adelante dos veces vuelve a 1', () => {
+    const src = new VrControllersSource(xr);
+    const si = new Simulation(makeStraightTrack({ lengthM: 2000, halfWidthM: 8 }), structuredClone(config));
+    si.state.car.gear = 1;
+    const idle: DriverInput = { steer: 0, throttle: 0, brake: 0, ers: false };
+    const gesture = (which: 'l' | 'r', y: number) => {
+      push(src, which, y);
+      si.step(idle, src.takeCommands());
+      for (let i = 0; i < Math.ceil(config.gears.shiftCutS / dt) + 2; i++) si.step(idle);   // corte de cambio
+    };
+    gesture('r', 0.9); expect(si.state.car.gear).toBe(0);
+    gesture('l', 0.9); expect(si.state.car.gear).toBe(-1);
+    gesture('r', -0.9); expect(si.state.car.gear).toBe(0);
+    gesture('l', -0.9); expect(si.state.car.gear).toBe(1);
   });
 });

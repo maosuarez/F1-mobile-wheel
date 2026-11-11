@@ -115,7 +115,6 @@ async function start(): Promise<void> {
   const adapter = new KeyboardAdapter(window, {
     onRecenter: () => { if (state === 'racing') { sim.recenter(); syncPrev(); } },
     onPause: () => togglePause(),
-    onToggleAuto: () => { if (state === 'racing' && source !== wheel) sim.assists.autoShift = !sim.assists.autoShift; },
   });
   const keyboardSource = new KeyboardInput(adapter);
   let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;

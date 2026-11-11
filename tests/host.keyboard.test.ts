@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { KeyboardInput } from '../src/host/input/keyboard';
+import { describe, expect, it, vi } from 'vitest';
+import { KeyboardAdapter, KeyboardInput } from '../src/host/input/keyboard';
 import { config } from '../src/shared/config';
 
 const mk = () => {
@@ -60,5 +60,19 @@ describe('KeyboardInput', () => {
     expect(kb.read(1 / 120).ers).toBe(true);
     down.delete('Space');
     expect(kb.read(1 / 120).ers).toBe(false);
+  });
+});
+
+describe('KeyboardAdapter sin alternancia de cambio', () => {
+  it('KeyM no invoca ningún callback ni lanza', () => {
+    const target = new EventTarget() as unknown as Window;
+    const cb = { onRecenter: vi.fn(), onPause: vi.fn() };
+    const ad = new KeyboardAdapter(target, cb);
+    const ev = new Event('keydown') as Event & { code: string; repeat: boolean };
+    ev.code = 'KeyM'; ev.repeat = false;
+    expect(() => target.dispatchEvent(ev)).not.toThrow();
+    expect(cb.onRecenter).not.toHaveBeenCalled();
+    expect(cb.onPause).not.toHaveBeenCalled();
+    ad.dispose();
   });
 });

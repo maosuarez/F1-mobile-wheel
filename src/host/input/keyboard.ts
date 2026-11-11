@@ -48,7 +48,7 @@ const PREVENT = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Spa
 // Adaptador fino de eventos del navegador
 export class KeyboardAdapter implements KeyState {
   private down = new Set<string>();
-  constructor(private readonly target: Window, private readonly cb: { onRecenter?: () => void; onPause?: () => void; onToggleAuto?: () => void } = {}) {
+  constructor(private readonly target: Window, private readonly cb: { onRecenter?: () => void; onPause?: () => void } = {}) {
     target.addEventListener('keydown', this.onDown);
     target.addEventListener('keyup', this.onUp);
     target.addEventListener('blur', this.onBlur);
@@ -61,7 +61,6 @@ export class KeyboardAdapter implements KeyState {
     if (e.repeat) return;
     this.down.add(e.code);
     if (e.code === 'KeyR') this.cb.onRecenter?.();
-    if (e.code === 'KeyM') this.cb.onToggleAuto?.();
     if (e.code === 'KeyP' || e.code === 'Escape') this.cb.onPause?.();
   };
   private onUp = (e: KeyboardEvent) => { this.down.delete(e.code); };

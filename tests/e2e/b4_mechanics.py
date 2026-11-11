@@ -70,7 +70,7 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=ARGS)
 
-        # (a) teclado: M desactiva el automático, limitador en 1.ª, E sube a 2.ª
+        # (a) teclado: M no cambia el automático (fijo); limitador/E en manual quedan cubiertos por (d) con volante
         def a():
             ctx = browser.new_context(viewport={"width": 1280, "height": 720})
             pg = b3.watch(ctx.new_page(), "host-a")
@@ -80,23 +80,9 @@ def main():
             wait_racing(pg)
             check("a: automático activo por defecto", snap(pg)["autoShift"] is True)
             pg.keyboard.press("KeyM")
-            pg.wait_for_function("window.__f1.snapshot().autoShift === false", timeout=5000)
-            check("a: M desactiva el automático", True)
-            pg.wait_for_function("document.querySelector('[data-testid=hud-auto]').dataset.on === '0'", timeout=5000)
-            check("a: indicador del HUD en manual", True)
-            pg.keyboard.down("KeyW")
-            pg.wait_for_function("window.__f1.snapshot().leds === 16", timeout=60000)
-            s = snap(pg)
-            check("a: 1.ª en el limitador con leds = 16", s["gear"] == 1 and s["leds"] == 16, f"gear={s['gear']} leds={s['leds']}")
-            pg.wait_for_function("document.querySelector('[data-testid=hud-leds]').classList.contains('blink')", timeout=5000)
-            check("a: el contenedor de LEDs parpadea", True)
             pg.wait_for_timeout(500)
-            check("a: sigue en 1.ª sin cambio automático", snap(pg)["gear"] == 1)
-            hold(pg, "KeyE")
-            pg.wait_for_function("window.__f1.snapshot().gear === 2", timeout=10000)
-            check("a: E sube a 2.ª", True)
-            check("a: hud-gear muestra 2", pg.locator('[data-testid="hud-gear"]').inner_text().strip() == "2")
-            pg.keyboard.up("KeyW")
+            check("a: M no cambia autoShift (sigue true)", snap(pg)["autoShift"] is True)
+            check("a: indicador del HUD sigue en automático", pg.locator('[data-testid="hud-auto"]').get_attribute("data-on") == "1")
             ctx.close()
         step("a", a)
 
