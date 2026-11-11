@@ -123,3 +123,46 @@ describe('Cámara de casco', () => {
     expect(p).toBeGreaterThanOrEqual(-4);
   });
 });
+
+describe('Ancla de cámara (design D2)', () => {
+  // Recorre los tres modos con aceleraciones y derrape para cubrir resortes, temblor y TV.
+  function replay(rig: CameraRig, car: CarState, pose: CarPose, sample: () => number[]): number[][] {
+    const out: number[][] = [];
+    setVelocity(car, 220, 10);
+    car.aLat = 3 * G; car.aLong = -2 * G;
+    let t = 0;
+    for (let m = 0; m < 3; m++) {
+      t = drive(rig, car, pose, 0.5, t, () => out.push(sample()));
+      rig.next();
+    }
+    return out;
+  }
+
+  it('Ancla = cámara: misma pose que sin ancla explícita en todos los modos', () => {
+    const a = setup();
+    const camB = new THREE.PerspectiveCamera(70, 16 / 9, 0.3, 2500);
+    const rigB = new CameraRig(camB, track, config, camB);
+    const carB = createCarState();
+    const poseB: CarPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+    expect(rigB.anchor).toBe(camB);
+    expect(a.rig.anchor).toBe(a.camera);
+    const ra = replay(a.rig, a.car, a.pose, () => [...a.camera.matrixWorld.elements, a.camera.fov, a.camera.near]);
+    const rb = replay(rigB, carB, poseB, () => [...camB.matrixWorld.elements, camB.fov, camB.near]);
+    expect(rb).toEqual(ra);
+  });
+
+  it('Ancla separada: la cámara hija ve igual que la cámara de escritorio', () => {
+    const a = setup();
+    const anchor = new THREE.Group();
+    const camB = new THREE.PerspectiveCamera(70, 16 / 9, 0.3, 2500);
+    anchor.add(camB);
+    const rigB = new CameraRig(camB, track, config, anchor);
+    const carB = createCarState();
+    const poseB: CarPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+    const ra = replay(a.rig, a.car, a.pose, () => [...a.camera.matrixWorld.elements]);
+    const rb = replay(rigB, carB, poseB, () => [...camB.matrixWorld.elements]);
+    expect(rb.length).toBe(ra.length);
+    for (let i = 0; i < ra.length; i++) for (let j = 0; j < 16; j++) expect(rb[i][j]).toBeCloseTo(ra[i][j], 5);
+    expect(camB.position.lengthSq()).toBe(0);
+  });
+});

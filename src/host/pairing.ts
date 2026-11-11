@@ -42,6 +42,10 @@ export class PairingUi {
   private readonly lostCode = q('wheel-lost-code');
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
+  get qrCanvas(): HTMLCanvasElement { return this.qr; }
+  get hintText(): string { return this.hint.textContent ?? ''; }
+  get roomText(): string { return this.code.textContent ?? ''; }
+
   setRoom(room: string, url: string, mode: WheelUrlMode, port: string): void {
     this.code.textContent = room;
     this.lostCode.textContent = room;

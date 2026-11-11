@@ -74,6 +74,9 @@ export const config = {
   // Red y emparejamiento con el volante (b3, design D4)
   net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000 },
   race:  { countdownS: 3 },
+  // Modo VR (b7, design D10). steerRampPerS = 1 / keyboard.steerRiseS (misma rampa que el teclado); distancias en metros
+  vr:    { framebufferScale: 0.8, foveation: 1, triggerDeadzone: 0.05, steerRangeRad: 1.05, steerRampPerS: 1 / 0.18,
+           hudDistanceM: 1.2, hudSizeM: [0.6, 0.3] as [number, number], hudRedrawHz: 10 },
   // Volante móvil (b3, design D5)
   wheel: { steerSign: 1, rangeDeg: 60, deadzoneDeg: 1.5, curveK: 0.35, flatThreshold: 3,
            oneEuro: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 }, sendHz: 60,

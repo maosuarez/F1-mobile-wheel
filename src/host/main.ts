@@ -8,7 +8,12 @@ import { AdaptiveQuality, FpsMeter, QUALITY, initialQuality, type QualityLevel, 
 import { buildCar } from '../render/car';
 import { TrackParticles } from '../render/particles';
 import { PostFx } from '../render/post';
-import type * as THREE from 'three';
+import { VR_QUALITY } from '../render/vrQuality';
+import { VrSession } from './vr/session';
+import { VrPanel } from './vr/panel';
+import type { PanelScreen } from './vr/panelModel';
+import { hudModel } from './hudModel';
+import * as THREE from 'three';
 import { CameraRig } from '../render/cameras/rig';
 import { EngineAudio } from '../audio/engine';
 import { FxPlanner } from './net/fx';
@@ -22,6 +27,7 @@ import { loadBest, saveBest } from './storage';
 import { KeyboardAdapter, KeyboardInput } from './input/keyboard';
 import { AutopilotSource } from './input/autopilotSource';
 import type { InputSource } from './input/types';
+import { VrControllersSource, nextVrSource } from './input/vrControllers';
 import { Autopilot } from '../sim/autopilot';
 import { decodeAtHost, encode, generateRoomCode, type TelHint } from '../shared/protocol';
 import { RoomClient } from './net/roomClient';
@@ -88,7 +94,9 @@ async function start(): Promise<void> {
   const car = carVisual.group;
   car.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
   scene.add(car);
-  const rig = new CameraRig(camera, track, config);
+  // Rig de escritorio: el ancla es la propia cámara (design D2). El rig VR se crea al entrar en la sesión
+  const deskRig = new CameraRig(camera, track, config);
+  let rig = deskRig;
   const audio = new EngineAudio(config);
   audioRef = audio;
   audio.setPaused(true);
@@ -112,6 +120,7 @@ async function start(): Promise<void> {
   const keyboardSource = new KeyboardInput(adapter);
   let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
   const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = s.name !== 'wheel'; };
+  const controllersSource = new VrControllersSource(renderer.xr);
 
   // Volante: sala del relay (no se abre con ?autopilot=1)
   const ui = new PairingUi();
@@ -197,6 +206,19 @@ async function start(): Promise<void> {
     } else if (link === 'lost' && source === wheel) pause('wheelLost');
   };
 
+  // Mandos VR (design D8): sustituyen al teclado solo en sesión VR y sin volante conectado; tras updateWheel
+  const updateControllers = () => {
+    // Botones de los mandos en VR: A = pausa (como P), X = recolocar (como R)
+    if (inVr) for (const ev of controllersSource.pollButtons()) {
+      if (ev === 'pause') togglePause();
+      else if (state === 'racing') { sim.recenter(); syncPrev(); }
+    }
+    const next = nextVrSource(source, keyboardSource, controllersSource, inVr, wheel ? wheel.link() : 'none');
+    if (!next) return;
+    if (next === controllersSource) controllersSource.reset();
+    setSource(next);
+  };
+
   // Telemetría a net.telHz con temporizador propio (independiente del render), solo con volante conectado
   const sendTelemetry = () => {
     if (!wheel || !client) return;
@@ -229,8 +251,50 @@ async function start(): Promise<void> {
     particles.setCapacity(quality.particles);
     post.apply(quality);
   };
-  window.addEventListener('resize', () => { resize(renderer, camera, quality.dpr); post.syncSize(); });
+  window.addEventListener('resize', () => {
+    if (renderer.xr.isPresenting) return;                       // en VR el tamaño lo fija el visor
+    resize(renderer, camera, quality.dpr); post.syncSize();
+  });
   applyAll();
+
+  // Modo VR (b7): perfil fijo VR_QUALITY sin adaptativo ni posproceso; cámara hija del ancla (design D2/D3)
+  const vrAnchor = new THREE.Object3D();
+  let vrRig: CameraRig | null = null;
+  // Copia el modo de cámara activo; next() siempre fuerza un corte (snap) en el siguiente update
+  const syncRigMode = (to: CameraRig, from: CameraRig) => {
+    const target = from.debug().mode;
+    do to.next(); while (to.debug().mode !== target);
+  };
+  let inVr = false;
+  let vrPanel: VrPanel | null = null;
+  const vr = new VrSession(renderer, $('vr-enter') as HTMLButtonElement, navigator, window.isSecureContext, {
+    onStart: () => {
+      inVr = true;
+      vrRig ??= new CameraRig(camera, track, config, vrAnchor);
+      syncRigMode(vrRig, deskRig);
+      rig = vrRig;
+      scene.add(vrAnchor);
+      vrAnchor.add(camera);
+      camera.position.set(0, 0, 0);
+      camera.quaternion.identity();
+      vrPanel ??= new VrPanel();
+      camera.add(vrPanel.mesh);
+      quality = VR_QUALITY;
+      applyAll();
+    },
+    onEnd: () => {
+      inVr = false;
+      if (vrPanel) camera.remove(vrPanel.mesh);
+      vrAnchor.remove(camera);
+      scene.remove(vrAnchor);
+      if (vrRig) syncRigMode(deskRig, vrRig);
+      rig = deskRig;
+      quality = settingsFor(adaptive.level);
+      applyAll();
+    },
+    onError: (e) => ui.toast(`No se pudo entrar en VR: ${e instanceof Error ? e.message : String(e)}`),
+  });
+  void vr.init();
 
   if (debug) {
     const carCost = objectCost(car);
@@ -264,15 +328,17 @@ async function start(): Promise<void> {
 
   const dt = config.sim.dt;
   let lastT = performance.now();
+  // Bucle único con setAnimationLoop (design D1): también dispara durante una sesión WebXR
+  let firstFrame = true;
   const frame = (now: number) => {
-    requestAnimationFrame(frame);
+    if (firstFrame) { firstFrame = false; lastT = now; }   // igual que el arranque anterior: primer dt = 0
     const frameDt = Math.min((now - lastT) / 1000, 1);
     lastT = now;
     if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
     // Solo cuentan los fotogramas de juego activo con la pestaña visible
     const active = (state === 'racing' || state === 'countdown') && !document.hidden;
     if (active) fpsMeter.push(frameDt);
-    const lowered = adaptive.sample(frameDt, active);
+    const lowered = inVr ? null : adaptive.sample(frameDt, active);
     if (lowered) {
       quality = settingsFor(lowered);
       applyAll();
@@ -280,6 +346,7 @@ async function start(): Promise<void> {
     }
 
     updateWheel();
+    updateControllers();
     if (state === 'countdown') {
       const left = (countdownEndMs - nowMs()) / 1000;           // coche retenido: la simulación no avanza
       if (left <= 0) { ui.setCountdown(null); stepper.reset(); setState('racing'); }
@@ -327,6 +394,7 @@ async function start(): Promise<void> {
     carVisual.update(cs, camDt);
     rig.update({ ...pose, pitch: cs.pitch, roll: cs.roll }, cs, camDt, sim.state.t);
     updateScene(gs, pose.x, pose.y, pose.z, pose.yaw);
+    if (inVr) gs.sky.position.copy(vrAnchor.position);          // en VR camera.position es local a la cabeza
     audio.update(cs, camDt);
     if (client && source === wheel && state === 'racing') {
       const fk = fxPlanner.plan(frameEvents, cs, nowMs());
@@ -336,12 +404,20 @@ async function start(): Promise<void> {
     particles.update(cs, pose, sim.state.t);
     particles.setView(renderer.domElement.height, camera.fov);
     renderer.info.reset();
-    post.render();
+    if (inVr) renderer.render(scene, camera);                   // VR: sin posproceso, estéreo vía WebXR
+    else post.render();
     const info = renderer.info.render;
     maxDraw = Math.max(maxDraw, info.calls);
     maxTris = Math.max(maxTris, info.triangles);
     dpr = renderer.getPixelRatio();
 
+    if (inVr && vrPanel) {
+      const screen: PanelScreen = state === 'pairing' ? { kind: 'pairing', room: ui.roomText, hint: ui.hintText }
+        : state === 'countdown' ? { kind: 'countdown', n: Math.max(1, Math.ceil((countdownEndMs - nowMs()) / 1000)) }
+        : state === 'paused' ? { kind: 'paused' }
+        : { kind: 'hud', model: hudModel(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift) };
+      vrPanel.update(now, screen, ui.qrCanvas);
+    }
     hud.update(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift);
     panel.update(now, {
       fps, quality: adaptive.level, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
@@ -349,7 +425,7 @@ async function start(): Promise<void> {
       wheelLink: wheel ? wheel.link() : 'none', rttMs: wheel ? wheel.lastRttMs() : null,
     });
   };
-  requestAnimationFrame((t) => { lastT = t; frame(t); });
+  renderer.setAnimationLoop(frame);
 }
 
 setState('loading');

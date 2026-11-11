@@ -36,8 +36,12 @@ export class CameraRig {
   private readonly euler = new THREE.Euler();
   private readonly right = new THREE.Vector3();
   private readonly up = new THREE.Vector3();
+  private readonly mLook = new THREE.Matrix4();
+  // Objeto que recibe la pose del rig (design D2): en escritorio la propia cámara; en VR un ancla padre de la cámara
+  readonly anchor: THREE.Object3D;
 
-  constructor(readonly camera: THREE.PerspectiveCamera, private readonly track: Track, private readonly cfg: GameConfig) {
+  constructor(readonly camera: THREE.PerspectiveCamera, private readonly track: Track, private readonly cfg: GameConfig, anchor?: THREE.Object3D) {
+    this.anchor = anchor ?? camera;
     const c = cfg.camera;
     this.mode = c.defaultMode;
     this.sx = new CriticalSpring(c.chase.omega);
@@ -59,6 +63,7 @@ export class CameraRig {
   update(pose: CarPose, car: CarState, dtS: number, tS: number): void {
     const c = this.cfg.camera;
     const cam = this.camera;
+    const a = this.anchor;
     const snap = this.needSnap;
     this.needSnap = false;
     const kmh = car.speed * 3.6;
@@ -81,10 +86,9 @@ export class CameraRig {
       const ox = -dx * c.chase.distM, oy = c.chase.heightM, oz = -dz * c.chase.distM;
       if (snap) { this.sx.snap(ox); this.sy.snap(oy); this.sz.snap(oz); }
       else { this.sx.step(ox, dtS); this.sy.step(oy, dtS); this.sz.step(oz, dtS); }
-      cam.position.set(pose.x + this.sx.x, pose.y + this.sy.x, pose.z + this.sz.x);
+      a.position.set(pose.x + this.sx.x, pose.y + this.sy.x, pose.z + this.sz.x);
       this.look.set(pose.x + vdx * c.chase.lookAheadM, pose.y, pose.z + vdz * c.chase.lookAheadM);
-      cam.up.set(0, 1, 0);
-      cam.lookAt(this.look);
+      this.lookAt(this.look);
       fov = fovFor(kmh, c);
     } else if (this.mode === 'helmet') {
       const h = c.helmet, g = this.cfg.sim.g;
@@ -96,35 +100,34 @@ export class CameraRig {
       // Orientación del coche como en main.ts (orden 'YZX', cabeceo sobre Z, balanceo sobre X)
       this.euler.set(pose.roll, pose.yaw, pose.pitch, 'YZX');
       this.qCar.setFromEuler(this.euler);
-      cam.position.set(h.offset[0], h.offset[1], h.offset[2]).applyQuaternion(this.qCar);
-      cam.position.x += pose.x; cam.position.y += pose.y; cam.position.z += pose.z;
+      a.position.set(h.offset[0], h.offset[1], h.offset[2]).applyQuaternion(this.qCar);
+      a.position.x += pose.x; a.position.y += pose.y; a.position.z += pose.z;
       // Cámara (−Z) hacia +X del coche; guiñada por la dirección, cabeceo (>0 ⇒ hacia delante) y balanceo
       this.euler.set(-this.sPitch.x * DEG, -Math.PI / 2 - steer * h.lookSteerDeg * DEG, this.sRoll.x * DEG, 'YXZ');
       this.qLocal.setFromEuler(this.euler);
-      cam.quaternion.copy(this.qCar).multiply(this.qLocal);
+      a.quaternion.copy(this.qCar).multiply(this.qLocal);
       fov = fovFor(kmh, c);
       near = HELMET_NEAR;
     } else {
       const i = activeTvCamera(this.tvCams, this.track, car.s);
       const tv = this.tvCams[i];
       this.tvIndex = i;
-      cam.position.set(tv.x, tv.y, tv.z);
-      cam.up.set(0, 1, 0);
+      a.position.set(tv.x, tv.y, tv.z);
       this.look.set(pose.x, pose.y, pose.z);
-      cam.lookAt(this.look);
-      fov = tvFovDeg(cam.position.distanceTo(this.look), c);
+      this.lookAt(this.look);
+      fov = tvFovDeg(a.position.distanceTo(this.look), c);
     }
 
     // Temblor en el espacio de la cámara (solo cámaras a bordo/persecución)
     this.shakeM = 0;
     if (this.mode !== 'tv') {
-      const a = shakeAmplitude(car, c);
-      this.shakeM = a;
-      if (a > 0) {
-        const [ox, oy] = shakeOffset(a, tS, c);
-        this.right.set(1, 0, 0).applyQuaternion(cam.quaternion);
-        this.up.set(0, 1, 0).applyQuaternion(cam.quaternion);
-        cam.position.addScaledVector(this.right, ox).addScaledVector(this.up, oy);
+      const amp = shakeAmplitude(car, c);
+      this.shakeM = amp;
+      if (amp > 0) {
+        const [ox, oy] = shakeOffset(amp, tS, c);
+        this.right.set(1, 0, 0).applyQuaternion(a.quaternion);
+        this.up.set(0, 1, 0).applyQuaternion(a.quaternion);
+        a.position.addScaledVector(this.right, ox).addScaledVector(this.up, oy);
       }
     }
 
@@ -134,11 +137,20 @@ export class CameraRig {
       cam.updateProjectionMatrix();
     }
     this.fovDeg = fov;
-    cam.updateMatrixWorld();
+    a.updateMatrixWorld();
+  }
+
+  // Orienta el ancla con la convención de cámara (−Z hacia el objetivo), también si el ancla no es una cámara
+  private lookAt(target: THREE.Vector3): void {
+    const a = this.anchor;
+    a.up.set(0, 1, 0);
+    if (a === this.camera) { a.lookAt(target); return; }
+    this.mLook.lookAt(a.position, target, a.up);
+    a.quaternion.setFromRotationMatrix(this.mLook);
   }
 
   debug(): { mode: CameraMode; fovDeg: number; shakeM: number; pos: [number, number, number]; tvIndex: number } {
-    const p = this.camera.position;
+    const p = this.anchor.position;
     return { mode: this.mode, fovDeg: this.fovDeg, shakeM: this.shakeM, pos: [p.x, p.y, p.z], tvIndex: this.tvIndex };
   }
 }
