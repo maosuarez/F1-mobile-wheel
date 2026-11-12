@@ -6,3 +6,6 @@ tools/track/.cache/
 __pycache__/
 .env
 *.log
+
+# Config local del usuario
+.claude/settings.local.json
