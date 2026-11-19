@@ -34,6 +34,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .auto { font-size: clamp(11px,.9vw,15px); font-weight: 700; padding: 3px 8px; border-radius: 4px; background: #2a2f38; color: var(--dim); letter-spacing: .08em; }
 .auto[data-on="1"] { background: rgba(53,224,122,.18); color: var(--ok); }
 .hud-energy { right: clamp(12px,1.5vw,28px); bottom: clamp(12px,1.5vw,28px); width: clamp(200px,16vw,280px); display: flex; flex-direction: column; gap: 8px; }
+.hud-minimap { position: absolute; right: clamp(12px,1.5vw,28px); bottom: calc(clamp(12px,1.5vw,28px) + 150px); width: clamp(160px,14vw,240px); height: clamp(160px,14vw,240px); border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.12); }
 .drs { text-align: center; font-weight: 800; letter-spacing: .1em; padding: 4px 0; border-radius: 6px; background: #2a2f38; color: #5b6472; font-size: clamp(14px,1.2vw,20px); }
 .drs[data-state="1"] { background: #3a2f0a; color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); }
 .drs[data-state="2"] { background: var(--ok); color: #04210f; }

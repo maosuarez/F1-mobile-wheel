@@ -11,6 +11,7 @@ import { PostFx } from '../render/post';
 import { VR_QUALITY } from '../render/vrQuality';
 import { VrSession } from './vr/session';
 import { VrPanel } from './vr/panel';
+import { VrMinimap } from './vr/minimap';
 import type { PanelScreen } from './vr/panelModel';
 import { hudModel } from './hudModel';
 import * as THREE from 'three';
@@ -21,6 +22,7 @@ import type { FxKey, EvKey } from '../shared/protocol';
 import type { SimEvent } from '../sim/types';
 import { FixedStepper } from './loop';
 import { Hud } from './hud';
+import { Minimap } from './minimap';
 import { DebugPanel } from './debugPanel';
 import { installDebugApi } from './debugApi';
 import { loadBest, saveBest } from './storage';
@@ -107,6 +109,7 @@ async function start(): Promise<void> {
   window.addEventListener('pointerdown', unlockAudio, { once: true });
   window.addEventListener('keydown', unlockAudio, { once: true });
   const hud = new Hud();
+  const minimap = new Minimap(track, document.querySelector<HTMLCanvasElement>('[data-testid="hud-minimap"]')!);
   const panel = new DebugPanel();
   hud.show(true);
   const warnings = new WarningCenter();
@@ -309,6 +312,7 @@ async function start(): Promise<void> {
   };
   let inVr = false;
   let vrPanel: VrPanel | null = null;
+  let vrMinimap: VrMinimap | null = null;
   const vr = new VrSession(renderer, $('vr-enter') as HTMLButtonElement, navigator, window.isSecureContext, {
     onStart: () => {
       inVr = true;
@@ -321,12 +325,15 @@ async function start(): Promise<void> {
       camera.quaternion.identity();
       vrPanel ??= new VrPanel();
       camera.add(vrPanel.mesh);
+      vrMinimap ??= new VrMinimap(minimap.canvas);
+      camera.add(vrMinimap.mesh);
       quality = VR_QUALITY;
       applyAll();
     },
     onEnd: () => {
       inVr = false;
       if (vrPanel) camera.remove(vrPanel.mesh);
+      if (vrMinimap) camera.remove(vrMinimap.mesh);
       vrAnchor.remove(camera);
       scene.remove(vrAnchor);
       if (vrRig) syncRigMode(deskRig, vrRig);
@@ -465,6 +472,8 @@ async function start(): Promise<void> {
       vrPanel.update(now, screen, ui.qrCanvas);
     }
     hud.update(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift);
+    minimap.update(sim.state.car, performance.now());
+    if (inVr && vrMinimap) vrMinimap.update(minimap.version);
     panel.update(now, {
       fps, quality: adaptive.level, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,
       surface: cs.surface, gLong: cs.aLong / config.sim.g, gLat: cs.aLat / config.sim.g,
