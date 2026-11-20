@@ -36,17 +36,40 @@ export function drawPanelModel(m: HudModel): DrawOp[] {
   return ops;
 }
 
+// Leyenda del mapeo de los mandos de Quest (b9, design D7): dos columnas en la franja inferior,
+// misma posición en pairing y paused. Textos ≤ 44 caracteres a 28 px
+export const LEGEND_SIZE = 28;
+export function legendOps(): DrawOp[] {
+  const rows = [310, 350, 390];
+  const col = (id: string, t: string, x: number, y: number, color = FG) => text(id, t, x, y, LEGEND_SIZE, 'left', color, 600);
+  return [
+    col('legendStart', 'A = EMPEZAR', 40, rows[0], WARN),
+    col('legendDrs', 'AGARRE IZQ = DRS', 40, rows[1]),
+    col('legendErs', 'AGARRE DER = ERS', 40, rows[2]),
+    col('legendCam', 'CLIC PALANCA IZQ = CÁMARA', 540, rows[0]),
+    col('legendGear', 'PALANCA = MARCHAS', 540, rows[1]),
+    col('legendPause', 'A = PAUSA · B/Y = REINICIO', 540, rows[2]),
+  ];
+}
+
+const HINT_MAX = 44;
+
 export function drawScreen(s: PanelScreen): DrawOp[] {
   switch (s.kind) {
     case 'hud': return drawPanelModel(s.model);
     case 'pairing': return [
       rect(0, 0, PANEL_W, PANEL_H, BG),
-      text('pairTitle', 'SALA', 40, 90, 48, 'left', DIM),
-      text('room', s.room, 40, 250, 150, 'left'),
-      text('hint', s.hint.length > 52 ? `${s.hint.slice(0, 51)}…` : s.hint, 40, 470, 30, 'left', DIM, 500),
-      { kind: 'qr', x: 640, y: 96, size: 320 },
+      text('pairTitle', 'SALA', 40, 70, 44, 'left', DIM),
+      text('room', s.room, 40, 240, 170, 'left'),
+      ...legendOps(),
+      text('hint', s.hint.length > HINT_MAX ? `${s.hint.slice(0, HINT_MAX - 1)}…` : s.hint, 40, 475, 28, 'left', DIM, 500),
+      { kind: 'qr', x: 774, y: 30, size: 220 },
     ];
     case 'countdown': return [rect(0, 0, PANEL_W, PANEL_H, BG), text('countdown', String(s.n), 512, 340, 300, 'center')];
-    case 'paused': return [rect(0, 0, PANEL_W, PANEL_H, BG), text('paused', 'PAUSA', 512, 320, 200, 'center', WARN)];
+    case 'paused': return [
+      rect(0, 0, PANEL_W, PANEL_H, BG),
+      text('paused', 'PAUSA', 512, 220, 170, 'center', WARN),
+      ...legendOps(),
+    ];
   }
 }

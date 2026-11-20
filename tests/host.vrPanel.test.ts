@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hudModel } from '../src/host/hudModel';
-import { drawPanelModel, drawScreen, type DrawOp } from '../src/host/vr/panelModel';
+import { drawPanelModel, drawScreen, legendOps, PANEL_H, PANEL_W, type DrawOp } from '../src/host/vr/panelModel';
 import { WarningCenter } from '../src/host/warnings';
 import type { SimState } from '../src/sim/types';
 
@@ -56,5 +56,42 @@ describe('panel VR: emparejamiento y pausa', () => {
   it('cuenta atrás y PAUSA', () => {
     expect(txt(drawScreen({ kind: 'countdown', n: 3 }), 'countdown')).toBe('3');
     expect(txt(drawScreen({ kind: 'paused' }), 'paused')).toBe('PAUSA');
+  });
+});
+
+describe('panel VR: leyenda de los mandos (b9)', () => {
+  const ids = ['legendStart', 'legendDrs', 'legendErs', 'legendCam', 'legendGear', 'legendPause'];
+  const size = (o: DrawOp[], id: string) => { const x = o.find((y) => y.kind === 'text' && y.id === id); return x && x.kind === 'text' ? x.size : undefined; };
+
+  it('legendOps: ids de la spec, textos ≤ 44 caracteres a 28 px y dentro del lienzo', () => {
+    const l = legendOps();
+    expect(l.map((o) => (o.kind === 'text' ? o.id : ''))).toEqual(ids);
+    for (const o of l) {
+      if (o.kind !== 'text') throw new Error('op inesperado');
+      expect(o.text.length).toBeLessThanOrEqual(44);
+      expect(o.size).toBe(28);
+      expect(o.x).toBeGreaterThanOrEqual(0); expect(o.x).toBeLessThan(PANEL_W);
+      expect(o.y).toBeGreaterThan(0); expect(o.y).toBeLessThan(PANEL_H);
+    }
+    expect(txt(l, 'legendStart')).toBe('A = EMPEZAR');
+  });
+
+  it('Leyenda: pairing incluye legendStart y legendDrs y el código con size >= 150', () => {
+    const o = drawScreen({ kind: 'pairing', room: 'AB12', hint: 'Escanea el QR con el celular o pulsa A para empezar sin él' });
+    for (const id of ids) expect(txt(o, id)).toBeDefined();
+    expect(size(o, 'room')!).toBeGreaterThanOrEqual(150);
+    expect(txt(o, 'hint')!.length).toBeLessThanOrEqual(44);
+    const qr = o.find((x) => x.kind === 'qr');
+    expect(qr && qr.kind === 'qr' ? qr.size : 0).toBe(220);
+  });
+
+  it('Pausa: paused incluye legendDrs', () => {
+    const o = drawScreen({ kind: 'paused' });
+    expect(txt(o, 'legendDrs')).toBeDefined();
+    expect(txt(o, 'paused')).toBe('PAUSA');
+  });
+
+  it('el HUD de carrera no lleva leyenda', () => {
+    expect(ops(mk()).some((x) => x.kind === 'text' && x.id.startsWith('legend'))).toBe(false);
   });
 });

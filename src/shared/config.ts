@@ -79,7 +79,9 @@ export const config = {
   // Modo VR (b7, design D10). steerRampPerS = 1 / keyboard.steerRiseS (misma rampa que el teclado); distancias en metros
   vr:    { framebufferScale: 0.8, foveation: 1, triggerDeadzone: 0.05, steerRangeRad: 1.05, steerRampPerS: 1 / 0.18,
            hudDistanceM: 1.2, hudSizeM: [0.6, 0.3] as [number, number], hudRedrawHz: 10, minimapSizeM: 0.22,
-           stickShiftOn: 0.7, stickShiftOff: 0.3 },
+           stickShiftOn: 0.7, stickShiftOff: 0.3,
+           // Índices xr-standard (b9, design D5): agarre y clic de palanca; sin verificar con visor real
+           gripButton: 1, stickClickButton: 3 },
   // Mando USB (b10, design D3)
   gamepad: { stickDeadzone: 0.08, triggerDeadzone: 0.05, steerExpo: 1.4 },
   // Volante móvil (b3, design D5)

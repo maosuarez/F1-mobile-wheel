@@ -20,7 +20,7 @@ describe('mapControllers', () => {
     let steer = 0;
     const maxStep = cfg.steerRampPerS * dt + 1e-9;
     for (let i = 0; i < 200; i++) {
-      const out = mapControllers({ rightTrigger: 0.8, leftTrigger: 0, rightRollRad: DEG45, prevSteer: steer }, dt, cfg);
+      const out = mapControllers({ rightTrigger: 0.8, leftTrigger: 0, rightRollRad: DEG45, prevSteer: steer, rightGrip: false }, dt, cfg);
       expect(out.steer).toBeGreaterThan(0);
       expect(Math.abs(out.steer - steer)).toBeLessThanOrEqual(maxStep);   // sin saltos
       expect(out.throttle).toBeGreaterThan(0);
@@ -43,20 +43,20 @@ describe('mapControllers', () => {
     expect(applyDeadzone(0.03, cfg.triggerDeadzone)).toBe(0);
     expect(applyDeadzone(1, cfg.triggerDeadzone)).toBe(1);
     expect(applyDeadzone(0.06, cfg.triggerDeadzone)).toBeGreaterThan(0);
-    const out = mapControllers({ rightTrigger: 0.04, leftTrigger: 0.04, rightRollRad: 0, prevSteer: 0 }, dt, cfg);
+    const out = mapControllers({ rightTrigger: 0.04, leftTrigger: 0.04, rightRollRad: 0, prevSteer: 0, rightGrip: false }, dt, cfg);
     expect(out.throttle).toBe(0);
     expect(out.brake).toBe(0);
   });
 
   it('límites: dirección en [-1,1], pedales en [0,1], sin pose vuelve a 0 con rampa', () => {
     let steer = 0;
-    for (let i = 0; i < 500; i++) steer = mapControllers({ rightTrigger: 2, leftTrigger: -1, rightRollRad: -Math.PI, prevSteer: steer }, dt, cfg).steer;
+    for (let i = 0; i < 500; i++) steer = mapControllers({ rightTrigger: 2, leftTrigger: -1, rightRollRad: -Math.PI, prevSteer: steer, rightGrip: false }, dt, cfg).steer;
     expect(steer).toBe(-1);
-    const o = mapControllers({ rightTrigger: 2, leftTrigger: 1.5, rightRollRad: null, prevSteer: steer }, dt, cfg);
+    const o = mapControllers({ rightTrigger: 2, leftTrigger: 1.5, rightRollRad: null, prevSteer: steer, rightGrip: false }, dt, cfg);
     expect(o.throttle).toBe(1);
     expect(o.brake).toBe(1);
     expect(o.steer).toBeCloseTo(-1 + cfg.steerRampPerS * dt, 9);
-    expect(mapControllers({ rightTrigger: NaN, leftTrigger: 0, rightRollRad: NaN, prevSteer: 0 }, dt, cfg))
+    expect(mapControllers({ rightTrigger: NaN, leftTrigger: 0, rightRollRad: NaN, prevSteer: 0, rightGrip: false }, dt, cfg))
       .toEqual({ steer: 0, throttle: 0, brake: 0, ers: false });
   });
 });
@@ -191,9 +191,9 @@ describe('Botones de los mandos (flanco de subida)', () => {
   });
 
   it('buttonEdges puro', () => {
-    expect(buttonEdges({ a: false, x: false }, { a: true, x: true })).toEqual(['pause', 'recenter']);
-    expect(buttonEdges({ a: true, x: true }, { a: true, x: true })).toEqual([]);
-    expect(buttonEdges({ a: true, x: false }, { a: false, x: false })).toEqual([]);
+    expect(buttonEdges({ a: false, x: false, stick: false }, { a: true, x: true, stick: true })).toEqual(['pause', 'recenter', 'camera']);
+    expect(buttonEdges({ a: true, x: true, stick: true }, { a: true, x: true, stick: true })).toEqual([]);
+    expect(buttonEdges({ a: true, x: false, stick: false }, { a: false, x: false, stick: false })).toEqual([]);
   });
 });
 
@@ -256,5 +256,62 @@ describe('VrControllersSource: palanca → órdenes de marcha', () => {
     gesture('l', 0.9); expect(si.state.car.gear).toBe(-1);
     gesture('r', -0.9); expect(si.state.car.gear).toBe(0);
     gesture('l', -0.9); expect(si.state.car.gear).toBe(1);
+  });
+});
+
+// Mandos falsos con agarres (buttons[1]) y clic de palanca izquierda (buttons[3]) controlables (b9)
+describe('Mandos de Quest: DRS, ERS y cámara', () => {
+  const st = { lGrip: false, rGrip: false, lStick: false };
+  const pad = (grip: boolean, stick: boolean) => ({
+    buttons: [{ value: 0 }, { pressed: grip }, {}, { pressed: stick }, { pressed: false }, { pressed: false }], axes: [0, 0, 0, 0],
+  });
+  const xr: XrFrameProvider = {
+    getSession: () => ({ inputSources: [
+      { handedness: 'right', gamepad: pad(st.rGrip, false) },
+      { handedness: 'left', gamepad: pad(st.lGrip, st.lStick) },
+    ] }) as unknown as XRSession,
+    getFrame: () => null,
+    getReferenceSpace: () => null,
+  };
+
+  it('índices en config.vr', () => {
+    expect(cfg.gripButton).toBe(1);
+    expect(cfg.stickClickButton).toBe(3);
+  });
+
+  it('DRS: flanco del agarre izquierdo → [\'drs\'] una sola vez aunque se mantenga', () => {
+    const src = new VrControllersSource(xr);
+    src.read(dt);
+    expect(src.takeCommands()).toEqual([]);
+    st.lGrip = true;
+    for (let i = 0; i < 20; i++) src.read(dt);
+    expect(src.takeCommands()).toEqual(['drs']);
+    src.read(dt);
+    expect(src.takeCommands()).toEqual([]);
+    st.lGrip = false; src.read(dt);
+    st.lGrip = true; src.read(dt);
+    expect(src.takeCommands()).toEqual(['drs']);
+    st.lGrip = false;
+  });
+
+  it('ERS: agarre derecho pulsado → ers true; al soltar, false', () => {
+    const src = new VrControllersSource(xr);
+    expect(src.read(dt).ers).toBe(false);
+    st.rGrip = true;
+    expect(src.read(dt).ers).toBe(true);
+    expect(src.read(dt).ers).toBe(true);
+    st.rGrip = false;
+    expect(src.read(dt).ers).toBe(false);
+    expect(src.takeCommands()).toEqual([]);   // el agarre derecho no genera órdenes
+  });
+
+  it('Cámara: flanco del clic de palanca izquierda → un único evento camera', () => {
+    const src = new VrControllersSource(xr);
+    expect(src.pollButtons()).toEqual([]);
+    st.lStick = true;
+    const ev = Array.from({ length: 30 }, () => src.pollButtons(16)).flat();
+    expect(ev).toEqual(['camera']);
+    st.lStick = false;
+    expect(src.pollButtons()).toEqual([]);
   });
 });

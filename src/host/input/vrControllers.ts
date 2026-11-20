@@ -17,6 +17,7 @@ export class VrControllersSource implements InputSource {
   readonly name = 'controllers' as const;
   private steer = 0;
   private stick: StickShiftState = { latched: false };
+  private prevLeftGrip = false;
   private pending: DriverCommand[] = [];
 
   constructor(private readonly xr: XrFrameProvider, private readonly cfg: GameConfig['vr'] = config.vr) {}
@@ -25,6 +26,7 @@ export class VrControllersSource implements InputSource {
     let rightTrigger = 0, leftTrigger = 0;
     let rightRollRad: number | null = null;
     let stickY = 0;
+    let rightGrip = false, leftGrip = false;
     const session = this.xr.getSession();
     if (session) {
       const frame = this.xr.getFrame();
@@ -32,40 +34,49 @@ export class VrControllersSource implements InputSource {
       for (const src of session.inputSources) {
         const trigger = src.gamepad?.buttons[0]?.value ?? 0;
         const y = src.gamepad?.axes?.[3] ?? 0;
+        const grip = src.gamepad?.buttons[this.cfg.gripButton]?.pressed ?? false;
         if (Math.abs(y) > Math.abs(stickY)) stickY = y;
         if (src.handedness === 'right') {
           rightTrigger = trigger;
+          rightGrip = grip;
           if (frame && ref && src.gripSpace) {
             const o = frame.getPose(src.gripSpace, ref)?.transform.orientation;
             if (o) rightRollRad = rollFromQuaternion(o.x, o.y, o.z, o.w);
           }
-        } else if (src.handedness === 'left') leftTrigger = trigger;
+        } else if (src.handedness === 'left') { leftTrigger = trigger; leftGrip = grip; }
       }
     }
     const sh = stickShiftEdges(this.stick, stickY, this.cfg);
     this.stick = sh.state;
     if (sh.cmd) this.pending.push(sh.cmd);
-    const input = mapControllers({ rightTrigger, leftTrigger, rightRollRad, prevSteer: this.steer }, dtS, this.cfg);
+    // Agarre izquierdo: DRS por flanco de subida (b9, design D5)
+    if (leftGrip && !this.prevLeftGrip) this.pending.push('drs');
+    this.prevLeftGrip = leftGrip;
+    const input = mapControllers({ rightTrigger, leftTrigger, rightRollRad, prevSteer: this.steer, rightGrip }, dtS, this.cfg);
     this.steer = input.steer;
     return input;
   }
 
   takeCommands(): DriverCommand[] { const c = this.pending; this.pending = []; return c; }
 
-  reset(): void { this.steer = 0; this.stick = { latched: false }; this.pending = []; }
+  reset(): void { this.steer = 0; this.stick = { latched: false }; this.prevLeftGrip = false; this.pending = []; }
 
   // Botones A (derecho) y X (izquierdo): buttons[4] en el mapeo xr-standard. Se sondea cada fotograma
   // en VR, también en pausa (read() solo corre en carrera)
   // B (derecho) e Y (izquierdo), buttons[5]: reinicio con pulsación sostenida (b9)
+  // Clic de palanca izquierda (config.vr.stickClickButton): cámara siguiente por flanco (b9, design D5)
   pollButtons(dtMs = 0): VrButtonEvent[] {
-    const cur = { a: false, x: false };
+    const cur: VrButtons = { a: false, x: false, stick: false };
     let b = false, y = false;
     const session = this.xr.getSession();
     if (session) for (const src of session.inputSources) {
       const pressed = src.gamepad?.buttons[4]?.pressed ?? false;
       const second = src.gamepad?.buttons[5]?.pressed ?? false;
       if (src.handedness === 'right') { cur.a = pressed; b = second; }
-      else if (src.handedness === 'left') { cur.x = pressed; y = second; }
+      else if (src.handedness === 'left') {
+        cur.x = pressed; y = second;
+        cur.stick = src.gamepad?.buttons[this.cfg.stickClickButton]?.pressed ?? false;
+      }
     }
     const ev = buttonEdges(this.prevButtons, cur);
     this.prevButtons = cur;
@@ -75,17 +86,19 @@ export class VrControllersSource implements InputSource {
   }
   private holdRight: HoldDetector = holdDetector(config.race.restartHoldMs);
   private holdLeft: HoldDetector = holdDetector(config.race.restartHoldMs);
-  private prevButtons: VrButtons = { a: false, x: false };
+  private prevButtons: VrButtons = { a: false, x: false, stick: false };
 }
 
-export interface VrButtons { a: boolean; x: boolean }
-export type VrButtonEvent = 'pause' | 'recenter' | 'restart';
+export interface VrButtons { a: boolean; x: boolean; stick: boolean }
+// 'pause' = flanco de A; main.ts lo reinterpreta como arranque ('start') en pairing (design D5/D6)
+export type VrButtonEvent = 'pause' | 'start' | 'recenter' | 'restart' | 'camera';
 
 // Flanco de subida: mantener un botón genera un solo evento
 export function buttonEdges(prev: VrButtons, cur: VrButtons): VrButtonEvent[] {
   const ev: VrButtonEvent[] = [];
   if (cur.a && !prev.a) ev.push('pause');
   if (cur.x && !prev.x) ev.push('recenter');
+  if (cur.stick && !prev.stick) ev.push('camera');
   return ev;
 }
 

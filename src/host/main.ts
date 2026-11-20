@@ -252,12 +252,16 @@ async function start(): Promise<void> {
 
   // Mandos VR (design D8): sustituyen al teclado solo en sesión VR y sin volante conectado; tras updateWheel
   const updateControllers = (dtMs: number) => {
-    // Botones de los mandos en VR: A = pausa (como P), X = recolocar (como R)
+    // Botones de los mandos en VR: A = pausa (como P) o arranque en pairing, X = recolocar (como R),
+    // clic de palanca izquierda = cámara en cualquier estado (b9, design D6)
     if (inVr) for (const ev of controllersSource.pollButtons(dtMs)) {
-      if (ev === 'pause') togglePause();
+      if (ev === 'camera') rig.next();
+      else if (ev === 'pause' && state === 'pairing') { setSource(controllersSource); controllersSource.reset(); startCountdown(); }
+      else if (ev === 'pause') togglePause();
       else if (ev === 'restart') restartRace();
       else if (state === 'racing') { sim.recenter(); syncPrev(); }
     }
+    if (source !== controllersSource || state === 'paused') controllersSource.takeCommands();   // órdenes sin efecto
     const next = nextVrSource(source, keyboardSource, controllersSource, inVr, wheel ? wheel.link() : 'none');
     if (!next) return;
     if (next === controllersSource) controllersSource.reset();

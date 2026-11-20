@@ -7,6 +7,7 @@ export interface VrControllersState {
   leftTrigger: number;           // gamepad.buttons[0].value del mando izquierdo, 0..1
   rightRollRad: number | null;   // roll del grip derecho (positivo = girado a la derecha); null sin pose
   prevSteer: number;             // dirección aplicada en el paso anterior (estado de la rampa)
+  rightGrip: boolean;            // agarre derecho pulsado → ERS mientras se mantiene (b9, design D5)
 }
 
 type VrCfg = GameConfig['vr'];
@@ -38,7 +39,7 @@ export function mapControllers(state: VrControllersState, dtS: number, cfg: VrCf
     steer,
     throttle: applyDeadzone(state.rightTrigger, cfg.triggerDeadzone),
     brake: applyDeadzone(state.leftTrigger, cfg.triggerDeadzone),
-    ers: false,
+    ers: state.rightGrip === true,
   };
 }
 
