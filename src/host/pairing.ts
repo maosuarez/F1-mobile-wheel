@@ -16,14 +16,23 @@ export function wheelUrl(
   const pub = info?.public_url?.trim();
   if (pub) return { url: pub.replace(/\/+$/, '') + path, mode: 'public' };
   const origin = `${loc.protocol}//${loc.hostname}${loc.port ? `:${loc.port}` : ''}`;
-  // localhost: el celular llega por USB con adb reverse; cualquier otra dirección es la IP de la red local
-  return { url: origin + path, mode: LOCAL_HOSTS.has(loc.hostname) ? 'usb' : 'wifi' };
+  // localhost: USB (adb reverse); IP privada/link-local/.local: WiFi; cualquier otro host (túnel, dominio): público
+  const mode: WheelUrlMode = LOCAL_HOSTS.has(loc.hostname) ? 'usb' : isLanHost(loc.hostname) ? 'wifi' : 'public';
+  return { url: origin + path, mode };
+}
+
+function isLanHost(host: string): boolean {
+  if (host.endsWith('.local')) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  return a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
 }
 
 export function pairingHint(mode: WheelUrlMode, port: string): string {
   if (mode === 'usb') return `Conecta el celular por USB y ejecuta: adb reverse tcp:${port || '5173'} tcp:${port || '5173'}`;
   if (mode === 'wifi') return 'Celular en la misma WiFi: escanea el QR y acepta el certificado';
-  return 'Escanea el QR con el celular';
+  return 'Escanea el QR o escribe el código en /wheel/';
 }
 
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
