@@ -22,6 +22,7 @@ import time
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 PING_S = float(os.environ.get("RELAY_PING_S", "2"))
@@ -148,3 +149,9 @@ def lan_ips() -> list[str]:
 @app.get("/api/info")
 def info() -> dict:
     return {"lan_ips": lan_ips(), "public_url": os.environ.get("PUBLIC_URL") or None}
+
+
+# Estáticos del juego (build de Vite). Va al final para no tapar /ws ni /api.
+_dist = os.environ.get("DIST_DIR", "dist")
+if os.path.isdir(_dist):
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="static")

@@ -1,0 +1,21 @@
+# Despliegue: HOST_PORT=28473 docker compose up -d --build
+# Un solo puerto sirve juego (/), volante (/wheel/), /api y /ws.
+#
+# HTTPS (necesario para WebXR y wss en el celular) con cloudflared:
+#   cloudflared tunnel --url http://localhost:28473
+#   o en config.yml del tunel: ingress -> service: http://localhost:28473
+# Luego define PUBLIC_URL=https://tu-dominio para que el QR use esa URL.
+services:
+  game:
+    build: .
+    ports:
+      - "${HOST_PORT:-28473}:8000"
+    environment:
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/info', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

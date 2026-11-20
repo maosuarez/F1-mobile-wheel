@@ -1,0 +1,9 @@
+node_modules
+dist
+out
+.venv
+.git
+tools/track/.cache
+tests
+.claude
+openspec
