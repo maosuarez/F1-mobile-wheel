@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ROOM_ALPHABET, ROOM_LENGTH, decodeAtHost, decodeAtWheel, encode, generateRoomCode, isRoomCode,
+  ROOM_ALPHABET, ROOM_LENGTH, decodeAtHost, decodeAtWheel, encode, generateRoomCode, isRoomCode, sanitizeRoomInput,
   type EvMsg, type FxMsg, type InMsg, type TelMsg,
 } from '../src/shared/protocol';
 
@@ -100,5 +100,14 @@ describe('código de sala', () => {
     expect(isRoomCode('ABCD')).toBe(true);
     expect(isRoomCode('AB2Z')).toBe(true);
     for (const s of ['abcd', 'ABC', 'ABCDE', 'AB0D', 'ABOD', 'AB1D', 'ABID', '', 'AB D']) expect(isRoomCode(s)).toBe(false);
+  });
+});
+
+describe('sanitizeRoomInput', () => {
+  it('mayúsculas, filtra alfabeto y máx. 4', () => {
+    expect(sanitizeRoomInput('abcd')).toBe('ABCD');
+    expect(sanitizeRoomInput('a1b-0c')).toBe('ABC');
+    expect(sanitizeRoomInput('abcdefg')).toBe('ABCD');
+    expect(sanitizeRoomInput('')).toBe('');
   });
 });

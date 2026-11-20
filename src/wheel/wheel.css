@@ -111,3 +111,10 @@ button { font: inherit; color: inherit; touch-action: none; user-select: none; -
   font-size: 28px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
 }
 .msg { max-width: 80%; font-size: 24px; text-align: center; }
+
+.cover#cover-noroom { flex-direction: column; gap: 20px; padding: 24px; }
+.room-form { display: flex; gap: 12px; align-items: stretch; }
+.room-input { width: 9ch; min-height: 64px; font: 700 2rem/1 monospace; letter-spacing: .2em; text-align: center; text-transform: uppercase; color: #fff; background: #11151a; border: 2px solid #3a424c; border-radius: 12px; }
+.room-input:focus { outline: none; border-color: var(--red); }
+.room-join { min-height: 64px; min-width: 56px; padding: 0 24px; font: 700 1.2rem/1 inherit; color: #fff; background: var(--red); border: 0; border-radius: 12px; }
+.room-join:disabled { opacity: .4; }

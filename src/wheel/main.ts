@@ -1,5 +1,5 @@
 import { config } from '../shared/config';
-import { isRoomCode, type FxKey } from '../shared/protocol';
+import { isRoomCode, sanitizeRoomInput, type FxKey } from '../shared/protocol';
 import { setupControls } from './controls';
 import { Display } from './display';
 import { Haptics } from './haptics';
@@ -107,6 +107,17 @@ setupControls({
 });
 
 document.querySelector('[data-testid="tap-start"]')!.addEventListener('click', start);
+
+const roomInput = document.querySelector('[data-testid="room-input"]') as HTMLInputElement;
+const roomJoin = document.querySelector('[data-testid="room-join"]') as HTMLButtonElement;
+roomInput.addEventListener('input', () => {
+  roomInput.value = sanitizeRoomInput(roomInput.value);
+  roomJoin.disabled = !isRoomCode(roomInput.value);
+});
+document.getElementById('room-form')!.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (isRoomCode(roomInput.value)) location.search = `?room=${roomInput.value}`;
+});
 
 if (!isRoomCode(room)) setState('no-room');
 else setState('tap');

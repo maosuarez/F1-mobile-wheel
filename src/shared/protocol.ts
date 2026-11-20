@@ -126,3 +126,13 @@ export function isRoomCode(s: string): boolean {
   for (const c of s) if (!ROOM_ALPHABET.includes(c)) return false;
   return true;
 }
+
+/** Normaliza lo escrito en el campo de sala: mayúsculas, solo alfabeto, máx. ROOM_LENGTH. */
+export function sanitizeRoomInput(s: string): string {
+  let out = '';
+  for (const c of s.toUpperCase()) {
+    if (ROOM_ALPHABET.includes(c)) out += c;
+    if (out.length >= ROOM_LENGTH) break;
+  }
+  return out;
+}
