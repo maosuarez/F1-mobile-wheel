@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pairingHint, wheelUrl } from '../src/host/pairing';
+import { pairingHint, shouldShowWheelButton, wheelUrl } from '../src/host/pairing';
 
 describe('wheelUrl', () => {
   it('modo USB: localhost', () => {
@@ -33,5 +33,14 @@ describe('wheelUrl', () => {
   });
   it('sin /api/info sigue funcionando', () => {
     expect(wheelUrl({ protocol: 'http:', hostname: 'localhost', port: '5173' }, null, 'ABCD').mode).toBe('usb');
+  });
+});
+
+describe('shouldShowWheelButton', () => {
+  it('solo en táctil sin Quest/VR', () => {
+    expect(shouldShowWheelButton(true, false)).toBe(true);
+    expect(shouldShowWheelButton(true, true)).toBe(false);
+    expect(shouldShowWheelButton(false, false)).toBe(false);
+    expect(shouldShowWheelButton(false, true)).toBe(false);
   });
 });

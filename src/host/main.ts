@@ -37,7 +37,7 @@ import { RoomClient } from './net/roomClient';
 import { WheelSource } from './net/wheelSource';
 import { WarningCenter } from './warnings';
 import { buildTel } from './net/telemetry';
-import { PairingUi, wheelUrl, type RelayInfo } from './pairing';
+import { PairingUi, shouldShowWheelButton, wheelUrl, type RelayInfo } from './pairing';
 
 type GameState = 'loading' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'error';
 type PauseReason = 'user' | 'hidden' | 'wheelLost';
@@ -80,6 +80,17 @@ async function fetchRelayInfo(): Promise<RelayInfo | null> {
     return { lan_ips: Array.isArray(j.lan_ips) ? j.lan_ips : [], public_url: typeof j.public_url === 'string' ? j.public_url : null };
   } catch { return null; }
 }
+
+async function initWheelButton(): Promise<void> {
+  const btn = document.querySelector<HTMLElement>('[data-testid="open-wheel"]');
+  if (!btn) return;
+  const coarse = window.matchMedia('(pointer: coarse) and (hover: none)').matches;
+  if (!coarse) return;
+  let vr = false;
+  try { vr = (await navigator.xr?.isSessionSupported('immersive-vr')) ?? false; } catch { /* sin WebXR */ }
+  btn.hidden = !shouldShowWheelButton(coarse, vr);
+}
+void initWheelButton();
 
 async function start(): Promise<void> {
   const track = await loadTrack('interlagos');

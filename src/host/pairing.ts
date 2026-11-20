@@ -35,6 +35,11 @@ export function pairingHint(mode: WheelUrlMode, port: string): string {
   return 'Escanea el QR o escribe el código en /wheel/';
 }
 
+// Botón fijo "Usar este celular como volante": solo táctil sin hover y sin WebXR immersive-vr (Quest)
+export function shouldShowWheelButton(coarseNoHover: boolean, hasImmersiveVr: boolean): boolean {
+  return coarseNoHover && !hasImmersiveVr;
+}
+
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
 
 // Interfaz de emparejamiento: overlay con QR, overlay de volante perdido, cuenta atrás y toast
