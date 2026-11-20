@@ -20,4 +20,4 @@
 ## 4. Cierre, GitHub y archivo (Fable)
 
 - [x] 4.1 `npx vitest run` y `npm run build` en verde; E2E rápido del host y del volante con `webapp-testing` en puertos limpios sin errores de consola; revisión `code-review-graph` (`code-review-graph build` por terminal y `detect_changes`).
-- [ ] 4.2 Commits Conventional Commits por parte vía `commit-orchestrator` (`feat(deploy)`, `feat(wheel)`, `feat(vr)`), `git push origin main` sin force; verificar `git status` limpio y `git log origin/main -1`. Tras el push, `/opsx:archive b9-deploy-docker-vr-ux` y marcar 6.3 de `b7-vr` queda fuera (decisión del usuario).
+- [x] 4.2 Commits Conventional Commits por parte vía `commit-orchestrator` (`feat(deploy)`, `feat(wheel)`, `feat(vr)`), `git push origin main` sin force; verificar `git status` limpio y `git log origin/main -1`. Tras el push, `/opsx:archive b9-deploy-docker-vr-ux` y marcar 6.3 de `b7-vr` queda fuera (decisión del usuario).
