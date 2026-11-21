@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { config } from '../src/shared/config';
+import { minimapPoint } from '../src/host/minimap';
 import { buildMinimapPath, createMinimapPath } from '../src/track/minimap';
 import { sampleAt } from '../src/track/query';
 import { makeOvalTrack, makeStraightTrack } from '../src/track/synthetic';
@@ -98,5 +99,27 @@ describe('Recorte local del minimapa', () => {
     }
     const mean = (performance.now() - t0) / 1000;
     expect(mean).toBeLessThanOrEqual(0.3);
+  });
+});
+
+describe('Puntos de rivales en el minimapa (b14)', () => {
+  it('minimapPoint coincide con el recorte: un punto de la pista a 50 m queda en el mismo sitio', () => {
+    const t = makeOvalTrack();
+    const car = carAt(t, 300, 0.3);
+    const out = createMinimapPath(cfg);
+    buildMinimapPath(t, car, cfg, out);
+    const j = out.iCar + 10;                                    // stepM = 5 → 50 m por delante
+    const p = sampleAt(t, 300 + 50);
+    const q = minimapPoint(car, p.x, p.z);
+    expect(q.x).toBeCloseTo(out.xy[2 * j], 3);
+    expect(q.y).toBeCloseTo(out.xy[2 * j + 1], 3);
+  });
+  it('un rival delante en línea recta tiene x ≈ 0 e y > 0', () => {
+    const t = makeStraightTrack();
+    const car = carAt(t, 1000);
+    const p = sampleAt(t, 1040);
+    const q = minimapPoint(car, p.x, p.z);
+    expect(Math.abs(q.x)).toBeLessThan(1e-6);
+    expect(q.y).toBeCloseTo(40, 3);
   });
 });

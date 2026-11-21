@@ -8,6 +8,9 @@ const q = <T extends HTMLElement>(root: ParentNode, id: string): T => {
   return el;
 };
 
+// "P4 · V2/5": la vuelta no pasa del total
+export const raceLabel = (pos: number, lap: number, laps: number): string => `P${pos} · V${Math.min(Math.max(1, lap), laps)}/${laps}`;
+
 export class Display {
   private readonly speed = q(document, 'disp-speed');
   private readonly gear = q(document, 'disp-gear');
@@ -23,8 +26,13 @@ export class Display {
   private readonly rtt = q(document, 'disp-rtt');
   private readonly status = q(document, 'wheel-status');
   private readonly flat = q(document, 'flat-warning');
+  // "P4 · V2/5" (b14): se crea aquí y solo se muestra si la telemetría trae pos y laps
+  private readonly race = document.createElement('span');
 
   constructor() {
+    this.race.hidden = true;
+    this.race.innerHTML = '<b data-testid="disp-race"></b>';
+    this.lap.parentElement?.parentElement?.prepend(this.race);
     for (let i = 0; i < 15; i++) {
       const d = document.createElement('i');
       d.className = `led ${i < 5 ? 'g' : i < 10 ? 'r' : 'b'}`;
@@ -46,6 +54,9 @@ export class Display {
     this.ers.dataset.value = String(t.ers);
     this.ersFill.style.width = `${Math.round(t.ers * 100)}%`;
     this.lap.textContent = String(t.lap);
+    const hasRace = t.pos !== undefined && t.laps !== undefined;
+    this.race.hidden = !hasRace;
+    if (hasRace) this.race.firstElementChild!.textContent = raceLabel(t.pos!, t.lap, t.laps!);
     this.delta.textContent = t.delta === null ? '—' : `${t.delta >= 0 ? '+' : '−'}${Math.abs(t.delta).toFixed(3)}`;
     this.warn.textContent = t.warn;
   }

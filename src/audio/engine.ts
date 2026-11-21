@@ -117,6 +117,11 @@ export class EngineAudio {
     cg.linearRampToValueAtTime(0, now + a.crackS);
   }
 
+  /** Contexto y bus maestro (pausa y silencio) para voces adicionales, como los rivales (b14 D7); null sin arrancar. */
+  output(): { ctx: AudioContext; bus: AudioNode } | null {
+    return this.g ? { ctx: this.g.ctx, bus: this.g.master } : null;
+  }
+
   setPaused(p: boolean): void { this.paused = p; this.applyMaster(); }
 
   setMuted(m: boolean): void { this._muted = m; writeMuted(m); this.applyMaster(); }

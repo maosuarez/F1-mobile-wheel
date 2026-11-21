@@ -15,6 +15,12 @@ describe('buildTel', () => {
     expect(encode(tel)).not.toContain('dbg');
     expect(new TextEncoder().encode(encode(tel)).length).toBeLessThan(300);
   });
+  it('carrera: pos y laps solo si se pasan', () => {
+    const tel = buildTel(state(50, 2, null), { warn: '', echo: 0, hold: 0, race: { pos: 4, laps: 5 } });
+    expect(tel.pos).toBe(4);
+    expect(tel.laps).toBe(5);
+    expect(new TextEncoder().encode(encode(tel)).length).toBeLessThan(300);
+  });
   it('delta null, warn recortado a 24 y hold no negativo', () => {
     const tel = buildTel(state(0, 1, null), { warn: 'W'.repeat(40), echo: 0, hold: -5 });
     expect(tel.delta).toBeNull();

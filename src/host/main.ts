@@ -2,7 +2,14 @@ import './hud.css';
 import { config } from '../shared/config';
 import { loadTrack } from '../track/load';
 import { loadWorld, terrainHeight } from '../track/world';
-import { Simulation } from '../sim/simulation';
+import type { Simulation } from '../sim/simulation';
+import { RaceController, parseRaceOptions, raceOptionDefaults, type RaceOptions } from './race/controller';
+import { RivalsRender } from '../render/rivals';
+import { RivalAudio } from '../audio/rivals';
+import { TEAMS } from '../shared/teams';
+import { RaceMenu, MenuPad, wheelMenuActions } from './race/menu';
+import { Tower, towerEntries } from './race/tower';
+import { ResultsView, resultsModel } from './race/results';
 import { NEUTRAL_INPUT, type DriverInput } from '../sim/types';
 import { applyQuality, createRenderer, createScene, loadHdriSky, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
 import { fetchAssetManifest, loadTrackTextures } from '../render/trackMaterials';
@@ -14,7 +21,7 @@ import { VR_QUALITY } from '../render/vrQuality';
 import { VrSession } from './vr/session';
 import { VrPanel } from './vr/panel';
 import { VrMinimap } from './vr/minimap';
-import type { PanelScreen } from './vr/panelModel';
+import type { PanelScreen, PanelRace } from './vr/panelModel';
 import { hudModel } from './hudModel';
 import * as THREE from 'three';
 import { CameraRig } from '../render/cameras/rig';
@@ -27,7 +34,7 @@ import { Hud } from './hud';
 import { Minimap } from './minimap';
 import { DebugPanel } from './debugPanel';
 import { installDebugApi } from './debugApi';
-import { loadBest, saveBest } from './storage';
+import { loadBest, saveBest, loadRaceChoice, saveRaceChoice } from './storage';
 import { KeyboardAdapter, KeyboardInput } from './input/keyboard';
 import { AutopilotSource } from './input/autopilotSource';
 import type { InputSource } from './input/types';
@@ -41,7 +48,7 @@ import { WarningCenter } from './warnings';
 import { buildTel } from './net/telemetry';
 import { PairingUi, shouldShowWheelButton, wheelUrl, type RelayInfo } from './pairing';
 
-type GameState = 'loading' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'error';
+type GameState = 'loading' | 'menu' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
 type PauseReason = 'user' | 'hidden' | 'wheelLost';
 
 const params = new URLSearchParams(window.location.search);
@@ -58,6 +65,7 @@ const $ = (id: string) => document.getElementById(id)!;
 let state: GameState = 'loading';
 let pauseReason: PauseReason | null = null;
 let audioRef: EngineAudio | null = null;
+let resultsHide: (() => void) | null = null;   // quita los atajos de teclado de la tabla de resultados
 
 function setState(s: GameState): void {
   state = s;
@@ -67,6 +75,9 @@ function setState(s: GameState): void {
   $('overlay-pause').hidden = !(s === 'paused' && pauseReason !== 'wheelLost');
   $('overlay-wheel-lost').hidden = !(s === 'paused' && pauseReason === 'wheelLost');
   $('overlay-error').hidden = s !== 'error';
+  $('overlay-menu').hidden = s !== 'menu';
+  $('overlay-results').hidden = s !== 'results';
+  if (s !== 'results') resultsHide?.();
 }
 
 function showError(e: unknown): void {
@@ -103,51 +114,6 @@ async function start(): Promise<void> {
     attr.textContent = world.attribution;
     attr.hidden = false;
   }
-  const sim = new Simulation(track);
-  sim.timer.setBestLap(loadBest(track.id));
-
-  const canvas = $('game') as HTMLCanvasElement;
-  const renderer = createRenderer(canvas, debug);
-  // Con GL por software, nivel 'software' sin adaptación salvo ?quality= (design D1)
-  const gpuName = rendererName(renderer);
-  const q0 = initialQuality(qualityParam, gpuName);
-  const gs = createScene(track, QUALITY[q0.level], world);
-  const { scene, camera } = gs;
-  const carVisual = buildCar();
-  const car = carVisual.group;
-  car.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-  scene.add(car);
-  // Rig de escritorio: el ancla es la propia cámara (design D2). El rig VR se crea al entrar en la sesión
-  // Cámaras exteriores sobre el terreno real (b12, design D9)
-  const ground = world ? (x: number, z: number) => terrainHeight(world, x, z) : null;
-  const deskRig = new CameraRig(camera, track, config, undefined, ground);
-  let rig = deskRig;
-  const audio = new EngineAudio(config);
-  audioRef = audio;
-  audio.setPaused(true);
-  const fxPlanner = new FxPlanner(config.fx);
-  const fxSent: Record<FxKey, number> = { kerb: 0, grass: 0, limits: 0, shift: 0, limiter: 0 };
-  const unlockAudio = () => { void audio.start().catch(() => { /* sin audio */ }); };
-  window.addEventListener('pointerdown', unlockAudio, { once: true });
-  window.addEventListener('keydown', unlockAudio, { once: true });
-  const hud = new Hud();
-  const minimap = new Minimap(track, document.querySelector<HTMLCanvasElement>('[data-testid="hud-minimap"]')!);
-  const panel = new DebugPanel();
-  hud.show(true);
-  const warnings = new WarningCenter();
-  const bestSectors: (number | null)[] = [null, null, null];
-
-  const stepper = new FixedStepper(config.sim.dt, config.sim.maxSubSteps);
-  const adapter = new KeyboardAdapter(window, {
-    onRecenter: () => { if (state === 'racing') { sim.recenter(); syncPrev(); } },
-    onPause: () => togglePause(),
-  });
-  const keyboardSource = new KeyboardInput(adapter);
-  let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
-  const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = true; };
-  const controllersSource = new VrControllersSource(renderer.xr);
-  const gamepadSource = new GamepadSource(() => navigator.getGamepads?.() ?? []);
-
   // Volante: sala del relay (no se abre con ?autopilot=1)
   const ui = new PairingUi();
   const nowMs = () => performance.now();
@@ -174,6 +140,84 @@ async function start(): Promise<void> {
     client.connect();
     void fetchRelayInfo().then((info) => { if (info) showRoom(info); else ui.setRelayDown(true); });
   }
+  // Menú de modo (b14 D7). Salta si la URL elige modo/rivales/nivel/semilla, con piloto automático o en depuración
+  // (salvo ?menu=1); entonces vale la URL, y sin `mode` la práctica de siempre.
+  // Primer gesto (clic o tecla) del menú: se recuerda y desbloquea el audio en cuanto exista
+  let gestured = false;
+  const markGesture = () => { gestured = true; };
+  window.addEventListener('pointerdown', markGesture, { once: true });
+  window.addEventListener('keydown', markGesture, { once: true });
+  const menuPad = new MenuPad(() => navigator.getGamepads?.() ?? []);
+  const menuUi = new RaceMenu($('overlay-menu'), () => [
+    ...(wheel ? wheelMenuActions(wheel.takeCommands(), wheel.takeUiEvents()) : []), ...menuPad.poll()]);
+  const skipMenu = ['mode', 'rivals', 'ai', 'seed'].some((k) => params.has(k)) || useAutopilot || (debug && params.get('menu') !== '1');
+  const chooseRaceOptions = async (skip: boolean): Promise<RaceOptions> => {
+    if (skip) return parseRaceOptions(params) ?? { mode: 'practice', ...raceOptionDefaults(params) };
+    setState('menu');
+    const c = await menuUi.choose(raceOpts ?? loadRaceChoice() ?? { mode: 'practice', ai: 'medium', rivals: config.race.defaultRivals });
+    saveRaceChoice(c);
+    return { mode: c.mode, rivals: c.rivals, ai: c.ai, seed: raceOptionDefaults(params).seed };
+  };
+  let raceOpts: RaceOptions | null = null;
+  raceOpts = await chooseRaceOptions(skipMenu);
+  let race = new RaceController(track, raceOpts);
+  let towerInfo = towerEntries(race.session.entries);
+  let sim: Simulation = race.playerSim;
+  sim.timer.setBestLap(loadBest(track.id));
+
+  const canvas = $('game') as HTMLCanvasElement;
+  const renderer = createRenderer(canvas, debug);
+  // Con GL por software, nivel 'software' sin adaptación salvo ?quality= (design D1)
+  const gpuName = rendererName(renderer);
+  const q0 = initialQuality(qualityParam, gpuName);
+  const gs = createScene(track, QUALITY[q0.level], world);
+  const { scene, camera } = gs;
+  const carVisual = buildCar();
+  const car = carVisual.group;
+  car.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  scene.add(car);
+  // Rivales instanciados (b14 D6)
+  const rivalsRender = new RivalsRender(TEAMS.map((t) => ({ primary: t.primary, accent: t.accent })));
+  scene.add(rivalsRender.group);
+  // Rig de escritorio: el ancla es la propia cámara (design D2). El rig VR se crea al entrar en la sesión
+  // Cámaras exteriores sobre el terreno real (b12, design D9)
+  const ground = world ? (x: number, z: number) => terrainHeight(world, x, z) : null;
+  const deskRig = new CameraRig(camera, track, config, undefined, ground);
+  let rig = deskRig;
+  const audio = new EngineAudio(config);
+  audioRef = audio;
+  const rivalAudio = new RivalAudio(config);
+  audio.setPaused(true);
+  const fxPlanner = new FxPlanner(config.fx);
+  const fxSent: Record<FxKey, number> = { kerb: 0, grass: 0, limits: 0, shift: 0, limiter: 0 };
+  const unlockAudio = () => { void audio.start().catch(() => { /* sin audio */ }); };
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
+  window.removeEventListener('pointerdown', markGesture);
+  window.removeEventListener('keydown', markGesture);
+  if (gestured) unlockAudio();
+  const hud = new Hud();
+  const tower = new Tower();
+  const resultsView = new ResultsView($('overlay-results'));
+  resultsHide = () => resultsView.hide();
+  const teamColors = TEAMS.map((t) => t.primary);
+  const minimap = new Minimap(track, document.querySelector<HTMLCanvasElement>('[data-testid="hud-minimap"]')!);
+  const panel = new DebugPanel();
+  hud.show(true);
+  const warnings = new WarningCenter();
+  const bestSectors: (number | null)[] = [null, null, null];
+
+  const stepper = new FixedStepper(config.sim.dt, config.sim.maxSubSteps);
+  const adapter = new KeyboardAdapter(window, {
+    onRecenter: () => { if (state === 'racing') { sim.recenter(); syncPrev(); } },
+    onPause: () => togglePause(),
+  });
+  const keyboardSource = new KeyboardInput(adapter);
+  let source: InputSource = useAutopilot ? new AutopilotSource(track) : keyboardSource;
+  const setSource = (s: InputSource) => { source = s; sim.assists.autoShift = true; };
+  const controllersSource = new VrControllersSource(renderer.xr);
+  const gamepadSource = new GamepadSource(() => navigator.getGamepads?.() ?? []);
+
   // Mando USB (b10): aviso al conectarlo; la selección de fuente se sondea cada fotograma en updateGamepad
   window.addEventListener('gamepadconnected', (e) => { if (e.gamepad.mapping === 'standard') ui.toast('Mando conectado'); });
   window.addEventListener('gamepaddisconnected', (e) => { if (e.gamepad.mapping === 'standard') ui.toast('Mando desconectado'); });
@@ -190,8 +234,16 @@ async function start(): Promise<void> {
   syncPrev();
 
   let countdownEndMs = 0;
+  // Número a mostrar en cuenta atrás: segundos restantes (práctica) o luces encendidas (carrera)
+  const countdownNumber = () => race.isRace ? String(race.lightsOn)
+    : String(Math.max(1, Math.ceil((countdownEndMs - nowMs()) / 1000)));
   let pausedFrom: 'racing' | 'countdown' = 'racing';
-  const startCountdown = () => { countdownEndMs = nowMs() + config.race.countdownS * 1000; setState('countdown'); };
+  // Práctica: cuenta atrás de 3 s. Carrera: el semáforo (avanza con los pasos de la simulación)
+  const startCountdown = () => {
+    if (race.isRace) { race.startLights(); stepper.reset(); }
+    else countdownEndMs = nowMs() + config.race.countdownS * 1000;
+    setState('countdown');
+  };
   const pause = (reason: PauseReason) => {
     if (state !== 'racing' && state !== 'countdown') return;
     pausedFrom = state;
@@ -210,16 +262,39 @@ async function start(): Promise<void> {
     else if (state === 'paused' && pauseReason !== 'wheelLost') resume();
   };
 
-  // Reinicio (b9): solo en carrera o pausa de usuario; vuelve a parrilla con cuenta atrás. Sala, fuente y cámara no cambian
-  const restartRace = () => {
-    if (!(state === 'racing' || (state === 'paused' && pauseReason === 'user'))) return;
-    sim.reset();
+  // Reinicio (b9): solo en carrera, resultados o pausa de usuario; vuelve a parrilla con cuenta atrás (o semáforo).
+  // Sala, fuente y cámara no cambian. En carrera se rehace la sesión con las mismas opciones
+  const rebuild = (opts: RaceOptions) => {
+    const assists = { ...sim.assists };
+    race = new RaceController(track, opts);
+    sim = race.playerSim;
+    sim.assists = assists;
+    sim.timer.setBestLap(loadBest(track.id));
+    towerInfo = towerEntries(race.session.entries);
+  };
+  const resetCommon = () => {
     bestSectors.fill(null);
     syncPrev();
     controllersSource.reset();
     gamepadSource.reset();
     pauseReason = null;
     startCountdown();
+  };
+  const restartRace = () => {
+    if (!(state === 'racing' || state === 'results' || (state === 'paused' && pauseReason === 'user'))) return;
+    if (race.isRace) rebuild(raceOpts!); else sim.reset();
+    resetCommon();
+  };
+  // Desde los resultados: vuelve al menú y arranca con la nueva elección
+  const goMenu = async () => {
+    if (state !== 'results') return;
+    raceOpts = await chooseRaceOptions(false);
+    rebuild(raceOpts);
+    resetCommon();
+  };
+  const showResults = () => {
+    const rows = resultsModel(race.standings(), race.session.entries, race.playerId, config.race.laps);
+    resultsView.show(rows, restartRace, () => { void goMenu(); });
   };
 
   window.addEventListener('keydown', (e) => {
@@ -232,7 +307,7 @@ async function start(): Promise<void> {
 
   // Estado del volante: toma de control, eventos de interfaz, pérdida y reanudación
   const updateWheel = () => {
-    if (!wheel) return;
+    if (!wheel || state === 'menu') return;    // en el menú, RaceMenu lee el volante
     for (const k of wheel.takeUiEvents() as EvKey[]) {
       if (k === 'pause' && source === wheel) togglePause();
       else if (k === 'cam') rig.next();
@@ -251,6 +326,7 @@ async function start(): Promise<void> {
   // Mando USB (design D4): sustituye al teclado sin volante ni sesión VR; antes de updateControllers para que,
   // al entrar en VR, el teclado devuelto pase a los mandos en el mismo fotograma
   const updateGamepad = (dtMs: number) => {
+    if (state === 'menu') return;                // en el menú, RaceMenu lee el mando
     // Pantalla de emparejamiento: Cruz u Options arrancan con el mando; solo el flanco, sin arrastrar el arranque
     const events = gamepadSource.pollUi(dtMs);
     if (state === 'pairing') {
@@ -274,6 +350,7 @@ async function start(): Promise<void> {
 
   // Mandos VR (design D8): sustituyen al teclado solo en sesión VR y sin volante conectado; tras updateWheel
   const updateControllers = (dtMs: number) => {
+    if (state === 'menu') return;
     // Botones de los mandos en VR: A = pausa (como P) o arranque en pairing, X = recolocar (como R),
     // clic de palanca izquierda = cámara en cualquier estado (b9, design D6)
     if (inVr) for (const ev of controllersSource.pollButtons(dtMs)) {
@@ -296,7 +373,7 @@ async function start(): Promise<void> {
     const link = wheel.link();
     if (link !== 'ok' && link !== 'stale') return;
     const now = nowMs();
-    const warn = state === 'countdown' ? String(Math.max(1, Math.ceil((countdownEndMs - now) / 1000)))
+    const warn = state === 'countdown' ? countdownNumber()
       : state === 'paused' ? 'PAUSA' : warnings.current(sim.state, sim.state.t);
     let dbg: TelHint | undefined;
     if (refPilot) {
@@ -304,7 +381,8 @@ async function start(): Promise<void> {
       dbg = { steer: r.input.steer, thr: r.input.throttle, brk: r.input.brake, gear: refPilot.suggestedGear(sim.state) };
     }
     const e = wheel.echo();
-    client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg })));
+    const raceTel = race.isRace ? { pos: race.playerPos(), laps: config.race.laps } : undefined;
+    client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg, race: raceTel })));
   };
   // Calidad adaptativa: empieza en high salvo ?quality= o GL por software, nunca vuelve a subir
   const adaptive = new AdaptiveQuality(config.quality, q0.level, q0.locked);
@@ -401,6 +479,7 @@ async function start(): Promise<void> {
         carDrawCalls: carCost.drawCalls, carTriangles: carCost.triangles, envDrawCalls: objectCost(gs.env).drawCalls,
         tracksideDrawCalls: objectCost(gs.trackside).drawCalls, tracksideTriangles: objectCost(gs.trackside).triangles,
         assets: { textures: [...assets.textures], failed: [...assets.failed], hdri: assets.hdri },
+        race: race.debug(), rivalDrawCalls: rivalsRender.drawCalls, rivalsVisible: rivalsRender.visible, rivalVoices: rivalAudio.voices(),
       };
     }, canvas);
   }
@@ -411,7 +490,8 @@ async function start(): Promise<void> {
     window.addEventListener('pagehide', () => { clearInterval(telTimer); client?.close(); });
   }
 
-  if (useAutopilot) { stepper.reset(); setState('racing'); }
+  if (useAutopilot && race.isRace) startCountdown();
+  else if (useAutopilot) { stepper.reset(); setState('racing'); }
   else setState('pairing');
 
   const dt = config.sim.dt;
@@ -436,7 +516,7 @@ async function start(): Promise<void> {
     updateWheel();
     updateGamepad(frameDt * 1000);
     updateControllers(frameDt * 1000);
-    if (state === 'countdown') {
+    if (state === 'countdown' && !race.isRace) {
       const left = (countdownEndMs - nowMs()) / 1000;           // coche retenido: la simulación no avanza
       if (left <= 0) { ui.setCountdown(null); stepper.reset(); setState('racing'); }
       else ui.setCountdown(Math.ceil(left));
@@ -444,14 +524,18 @@ async function start(): Promise<void> {
 
     let alpha = 1;
     const frameEvents: SimEvent[] = [];
-    if (state === 'racing') {
+    // Carrera: durante el semáforo también se dan pasos (RaceSession retiene los coches hasta el apagado)
+    const stepping = state === 'racing' || (state === 'countdown' && race.isRace);
+    if (stepping) {
       const r = stepper.advance(frameDt, timescale);
       alpha = r.alpha;
       for (let i = 0; i < r.steps; i++) {
         const c = sim.state.car;
         prev.x = c.x; prev.y = c.y; prev.z = c.z; prev.yaw = c.yaw;
         lastInput = source.read(dt, sim.state);
-        const events = sim.step(lastInput, source.takeCommands());
+        const raceEvents = race.step(lastInput, source.takeCommands());
+        const events = race.playerEvents(raceEvents);
+        if (state === 'countdown' && race.phase !== 'grid' && race.phase !== 'lights') setState('racing');
         for (const ev of events) {
           frameEvents.push(ev);
           audio.onEvent(ev);
@@ -463,12 +547,13 @@ async function start(): Promise<void> {
       }
       const c = sim.state.car;
       cur.x = c.x; cur.y = c.y; cur.z = c.z; cur.yaw = c.yaw;
+      if (race.finished) { showResults(); setState('results'); }
     } else if (state === 'paused') {
       alpha = 1;
     }
 
     // Pose interpolada; yaw por el camino corto
-    const k = state === 'racing' ? alpha : 1;
+    const k = stepping ? alpha : 1;
     let dy = cur.yaw - prev.yaw;
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     const pose = {
@@ -476,15 +561,17 @@ async function start(): Promise<void> {
       z: prev.z + (cur.z - prev.z) * k, yaw: prev.yaw + dy * k,
     };
     const cs = sim.state.car;
-    const camDt = state === 'racing' ? frameDt : 0;
+    const camDt = stepping ? frameDt : 0;
     car.position.set(pose.x, pose.y, pose.z);
     car.rotation.order = 'YZX';
     car.rotation.set(0, pose.yaw, cs.pitch);
     carVisual.update(cs, camDt);
     rig.update({ ...pose, pitch: cs.pitch, roll: cs.roll }, cs, camDt, sim.state.t);
     updateScene(gs, pose.x, pose.y, pose.z, pose.yaw);
+    rivalsRender.update(race.rivals(), k, camDt, camera);
     if (inVr) gs.sky.position.copy(vrAnchor.position);          // en VR camera.position es local a la cabeza
     audio.update(cs, camDt);
+    rivalAudio.update(audio.output(), race.rivals(), pose, camera);
     if (state === 'racing' && ((client && source === wheel) || source === gamepadSource)) {
       const fk = fxPlanner.plan(frameEvents, cs, nowMs());
       if (fk) {
@@ -504,14 +591,23 @@ async function start(): Promise<void> {
     dpr = renderer.getPixelRatio();
 
     if (inVr && vrPanel) {
+      const raceInfo = (): PanelRace => ({ pos: race.playerPos(), total: race.session.entries.length,
+        lap: race.session.lapsDone(race.playerId) + 1, laps: config.race.laps });
       const screen: PanelScreen = state === 'pairing' ? { kind: 'pairing', room: ui.roomText, hint: ui.hintText }
-        : state === 'countdown' ? { kind: 'countdown', n: Math.max(1, Math.ceil((countdownEndMs - nowMs()) / 1000)) }
+        : state === 'countdown' ? { kind: 'countdown', n: Number(countdownNumber()) }
         : state === 'paused' ? { kind: 'paused' }
-        : { kind: 'hud', model: hudModel(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift) };
+        : { kind: 'hud', model: hudModel(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift),
+          race: race.isRace ? raceInfo() : undefined };
       vrPanel.update(now, screen, ui.qrCanvas);
     }
+    const lights = $('race-lights');
+    lights.hidden = !(state === 'countdown' && race.isRace);
+    if (!lights.hidden) lights.querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i < race.lightsOn));
+    const raceHud = race.isRace && (state === 'racing' || state === 'countdown' || state === 'paused');
+    tower.show(raceHud);
+    if (raceHud) tower.update(() => race.standings(), towerInfo, race.playerId, config.race.laps, performance.now());
     hud.update(sim.state, state === 'racing' ? warnings.current(sim.state, sim.state.t) : '', bestSectors, sim.assists.autoShift);
-    minimap.update(sim.state.car, performance.now());
+    minimap.update(sim.state.car, performance.now(), race.rivals(), teamColors);
     if (inVr && vrMinimap) vrMinimap.update(minimap.version);
     panel.update(now, {
       fps, quality: adaptive.level, drawCalls: info.calls, triangles: info.triangles, speedKmh: cs.speed * 3.6, s: cs.s, d: cs.d,

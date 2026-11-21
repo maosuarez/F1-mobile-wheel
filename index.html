@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>F1 Mundial</title>
+  <title>Gran Premio</title>
 </head>
 <body>
   <a class="open-wheel" data-testid="open-wheel" href="/wheel/" hidden>Usar este celular como volante</a>
@@ -58,6 +58,14 @@
     </div>
   </div>
   <div id="countdown" class="countdown" data-testid="countdown" hidden></div>
+  <div id="race-lights" class="race-lights" data-testid="race-lights" hidden><i></i><i></i><i></i><i></i><i></i></div>
+  <section id="race-hud" class="race-hud" data-testid="race-hud" aria-label="Carrera" hidden>
+    <div class="rh-head"><b data-testid="race-pos"></b><span data-testid="race-lap"></span></div>
+    <div class="rh-gaps"><span data-testid="race-gap-ahead"></span><span data-testid="race-gap-behind"></span></div>
+    <ol class="rh-tower" data-testid="race-tower"></ol>
+  </section>
+  <div id="overlay-menu" class="overlay menu" data-testid="overlay-menu" hidden></div>
+  <div id="overlay-results" class="overlay results" data-testid="overlay-results" hidden></div>
   <div id="toast" class="toast" data-testid="toast" hidden></div>
   <button id="vr-enter" class="vr-enter" data-testid="vr-enter" type="button" hidden>Entrar en VR</button>
   <div id="overlay-pause" class="overlay" data-testid="overlay-pause" hidden>Pausa</div>

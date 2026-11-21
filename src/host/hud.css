@@ -58,6 +58,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .pairing-relay { font-size: 16px; font-weight: 600; color: #ffb347; }
 .pairing-enter { font-size: 16px; font-weight: 400; opacity: .7; }
 .pairing-enter kbd { border: 1px solid #fff8; border-radius: 4px; padding: 1px 6px; font: inherit; }
+.race-lights { position: fixed; top: 14%; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; padding: 16px 22px; background: #0b0b0d; border-radius: 12px; pointer-events: none; }
+.race-lights i { width: 54px; height: 54px; border-radius: 50%; background: #2a0c0c; box-shadow: inset 0 0 8px #000; }
+.race-lights i.on { background: #ff2a1a; box-shadow: 0 0 22px #ff2a1a; }
 .countdown { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font: 800 160px/1 system-ui, sans-serif; text-shadow: 0 4px 16px #000; pointer-events: none; }
 .toast { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); padding: 10px 20px; border-radius: 6px; background: rgba(0,0,0,.75); font-size: 18px; pointer-events: none; }
 /* Botón de VR (b7): solo visible con soporte immersive-vr y contexto seguro */
@@ -69,3 +72,42 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .pairing-wheel-link { align-self: flex-start; font-size: 16px; color: #8f7bff; text-decoration: underline; padding: 8px 0; }
 /* Atribución de datos OSM (b12): línea pequeña y discreta */
 .attribution { font-size: 11px; font-weight: 400; opacity: .55; margin-top: 4px; }
+/* HUD de carrera (b14): posición, vuelta, diferencias y torre */
+.race-hud { position: fixed; right: clamp(12px,1.5vw,28px); top: clamp(12px,1.5vw,28px); width: clamp(170px,13vw,230px); padding: 10px 12px; border-radius: 10px; background: rgba(8,10,14,.62); text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums; pointer-events: none; }
+.rh-head { display: flex; justify-content: space-between; align-items: baseline; font-size: clamp(14px,1.15vw,20px); }
+.rh-head b { font-size: 1.7em; font-weight: 800; }
+.rh-head span { color: #9aa3b0; font-weight: 600; }
+.rh-gaps { display: flex; justify-content: space-between; margin: 4px 0 8px; font-size: clamp(12px,1vw,16px); font-weight: 700; }
+.rh-gaps span:first-child { color: #ff6b7a; }
+.rh-gaps span:last-child { color: #35e07a; }
+.rh-tower { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: clamp(11px,.9vw,15px); font-weight: 600; }
+.rh-tower li { display: grid; grid-template-columns: 1.6em 8px 3em 1fr; align-items: center; gap: 6px; padding: 1px 4px; border-radius: 4px; }
+.rh-tower li[data-player="1"] { background: rgba(53,224,122,.22); box-shadow: inset 0 0 0 1px #35e07a; }
+.tw-pos { color: #9aa3b0; text-align: right; }
+.tw-dot { width: 8px; height: 14px; border-radius: 2px; display: block; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.tw-gap { text-align: right; color: #c8ced8; }
+/* Menú de modo (b14) */
+.overlay.menu { background: radial-gradient(ellipse at 50% 30%, rgba(30,36,48,.92), rgba(4,6,10,.96)); }
+.menu-card { display: flex; flex-direction: column; gap: 22px; align-items: stretch; width: min(720px, 92vw); text-align: left; }
+.menu-title { font-size: 44px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; text-align: center; }
+.menu-row { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; border-radius: 10px; border: 1px solid transparent; }
+.menu-row[data-focus="true"] { border-color: #35e07a; background: rgba(53,224,122,.08); }
+.menu-k { font-size: 15px; letter-spacing: .2em; text-transform: uppercase; opacity: .7; }
+.menu-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.menu-opt, .menu-start, .results-actions button { font: inherit; font-size: 20px; color: #fff; padding: 10px 20px; border-radius: 8px; border: 1px solid #fff4; background: rgba(255,255,255,.06); cursor: pointer; }
+.menu-opt[aria-pressed="true"] { background: #35e07a; color: #04210f; border-color: #35e07a; }
+.menu-opt:hover:not([aria-pressed="true"]), .results-actions button:hover { background: rgba(255,255,255,.16); }
+.menu-start { align-self: center; background: #ffb020; color: #2a1a00; border-color: #ffb020; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; padding: 12px 44px; }
+.menu-hint { font-size: 14px; font-weight: 400; opacity: .6; text-align: center; }
+/* Resultados de carrera (b14) */
+.overlay.results { background: rgba(4,6,10,.88); }
+.results-card { display: flex; flex-direction: column; gap: 18px; align-items: center; max-width: 96vw; }
+.results-title { font-size: 36px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.results-table { border-collapse: collapse; font-size: clamp(14px,1.3vw,20px); font-variant-numeric: tabular-nums; text-align: left; }
+.results-table th { font-size: .75em; letter-spacing: .12em; text-transform: uppercase; opacity: .6; padding: 4px 14px; font-weight: 600; }
+.results-table td { padding: 4px 14px; border-top: 1px solid #fff2; }
+.results-table td:first-child { text-align: right; opacity: .75; }
+.results-table td i { display: inline-block; width: 8px; height: 14px; border-radius: 2px; margin-right: 8px; vertical-align: -2px; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.results-table tr[data-player="1"] td { background: rgba(53,224,122,.2); font-weight: 800; }
+.results-table td.fastest { color: #c9a3ff; font-weight: 800; }
+.results-actions { display: flex; gap: 14px; }

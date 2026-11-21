@@ -1,5 +1,6 @@
 import type { FxKey } from '../shared/protocol';
 import type { DriverInput } from '../sim/types';
+import type { Standing } from '../sim/race';
 
 export interface DebugSnapshot {
   gameState: string; input: DriverInput; speedKmh: number; s: number; d: number; surface: string;
@@ -18,6 +19,9 @@ export interface DebugSnapshot {
   // Borde de pista y assets CC0 (b13); hdri null mientras carga
   tracksideDrawCalls: number; tracksideTriangles: number;
   assets: { textures: string[]; failed: string[]; hdri: boolean | null };
+  // Carrera (b14 D7); en práctica mode = 'practice' y una sola fila
+  race: { mode: string; phase: string; lightsOn: number; playerPos: number; standings: Standing[] };
+  rivalDrawCalls: number; rivalsVisible: number; rivalVoices: number[];
 }
 
 // Expone window.__f1 (solo lectura) únicamente con ?debug=1

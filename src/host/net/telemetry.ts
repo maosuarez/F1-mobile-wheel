@@ -6,7 +6,7 @@ import type { SimState } from '../../sim/types';
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 const WARN_MAX = 24;
 
-export function buildTel(state: SimState, extra: { warn: string; echo: number; hold: number; dbg?: TelHint }): TelMsg {
+export function buildTel(state: SimState, extra: { warn: string; echo: number; hold: number; dbg?: TelHint; race?: { pos: number; laps: number } }): TelMsg {
   const tel: TelMsg = {
     t: 'tel',
     spd: Math.max(0, state.car.speed * 3.6),
@@ -22,5 +22,6 @@ export function buildTel(state: SimState, extra: { warn: string; echo: number; h
     const d = extra.dbg;
     tel.dbg = { steer: clamp(d.steer, -1, 1), thr: clamp(d.thr, 0, 1), brk: clamp(d.brk, 0, 1), gear: clamp(Math.round(d.gear), -1, 8) };
   }
+  if (extra.race) { tel.pos = Math.max(1, Math.round(extra.race.pos)); tel.laps = Math.max(1, Math.round(extra.race.laps)); }
   return tel;
 }

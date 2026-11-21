@@ -189,6 +189,16 @@ export function buildRunoffGeometries(t: Track): THREE.BufferGeometry[] {
   return B.map((b) => b.build(true, false));
 }
 
+// Centro del cajón de parrilla k (b14 D1): s = start − startOffsetM − k·gridSpacingM, d = ±gridOffsetM
+// (par a la izquierda, d > 0), igual que Simulation.placeOnGrid.
+export function gridSlotCenter(t: Track, k: number): { s: number; d: number; x: number; z: number; frame: ReturnType<typeof sampleAt> } {
+  const S = config.surfaces;
+  const s = wrapS(t, t.startS - config.sim.startOffsetM - k * S.gridSpacingM);
+  const d = k % 2 === 0 ? S.gridOffsetM : -S.gridOffsetM;
+  const frame = sampleAt(t, s);
+  return { s, d, x: frame.x + d * frame.nx, z: frame.z + d * frame.nz, frame };
+}
+
 // Línea de meta ajedrezada de 1 m, 2 filas
 function startLine(t: Track, mat: THREE.Material): THREE.Mesh {
   const B = new Builder();
@@ -208,21 +218,23 @@ function startLine(t: Track, mat: THREE.Material): THREE.Mesh {
     const a1 = B.vert(P(r + 1, c), up, color, u0, len / UVM), b1 = B.vert(P(r + 1, c + 1), up, color, u1, len / UVM);
     B.quad(a0, b0, a1, b1);
   }
-  // Cajones de parrilla: rectángulos blancos (4 líneas finas) detrás de la meta, alternando izquierda/derecha
+  // Cajones de parrilla (b14 D1): rectángulo blanco (4 líneas finas) centrado en la posición del coche k, sobre el
+  // marco local de pista en ese s para que coincida con Simulation.placeOnGrid también si la recta curva
   const S = config.surfaces, white = C_KERB_WHITE;
-  const rect = (along0: number, along1: number, d0: number, d1: number) => {
-    const q = (al: number, d: number) => B.vert([sp.x + sp.tx * al + sp.nx * d, sp.y + 0.012, sp.z + sp.tz * al + sp.nz * d], up, white, d / UVM, al / UVM);
-    const a0 = q(along0, d0), b0 = q(along0, d1), a1 = q(along1, d0), b1 = q(along1, d1);
-    B.quad(a0, b0, a1, b1);
-  };
-  const lw = S.gridLineM;
+  const lw = S.gridLineM, hl = S.gridBoxLenM / 2;
   for (let k = 0; k < S.gridSlots; k++) {
-    const side = k % 2 === 0 ? 1 : -1;
-    const al1 = -(S.gridSpacingM * (k + 1));
-    const al0 = al1 - S.gridBoxLenM;
-    const dc = side * S.gridOffsetM, d0 = dc - S.gridBoxWidthM / 2, d1 = dc + S.gridBoxWidthM / 2;
-    rect(al0, al0 + lw, d0, d1); rect(al1 - lw, al1, d0, d1);
-    rect(al0, al1, d0, d0 + lw); rect(al0, al1, d1 - lw, d1);
+    const c = gridSlotCenter(t, k);
+    const p = c.frame;
+    const tb = Math.tan(t.bank[Math.round(wrapS(t, c.s) / t.step) % t.n]);
+    const rect = (along0: number, along1: number, d0: number, d1: number) => {
+      const q = (al: number, d: number) => B.vert([p.x + p.tx * al + p.nx * d, p.y + d * tb + 0.012, p.z + p.tz * al + p.nz * d],
+        up, white, d / UVM, al / UVM);
+      const a0 = q(along0, d0), b0 = q(along0, d1), a1 = q(along1, d0), b1 = q(along1, d1);
+      B.quad(a0, b0, a1, b1);
+    };
+    const d0 = c.d - S.gridBoxWidthM / 2, d1 = c.d + S.gridBoxWidthM / 2;
+    rect(-hl, -hl + lw, d0, d1); rect(hl - lw, hl, d0, d1);
+    rect(-hl, hl, d0, d0 + lw); rect(-hl, hl, d1 - lw, d1);
   }
   const m = new THREE.Mesh(B.build(true, true), mat);
   m.name = 'start-line';

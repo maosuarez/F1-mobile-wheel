@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import raw from '../public/track/interlagos.json';
 import { parseTrackJson } from '../src/track/schema';
 import { buildTrack } from '../src/track/track';
-import { buildTrackMeshes, buildRingPositions } from '../src/track/mesh';
+import { buildTrackMeshes, buildRingPositions, gridSlotCenter } from '../src/track/mesh';
+import { Simulation } from '../src/sim/simulation';
+import { config } from '../src/shared/config';
 import { createAsphaltTextures } from '../src/render/trackMaterials';
 import { KERB_HEIGHT_M } from '../src/track/types';
 
@@ -130,5 +132,25 @@ describe('Superficies (b6)', () => {
     const c = createAsphaltTextures(8, 64).color.image.data as Uint8Array;
     expect(Array.from(a)).toEqual(Array.from(b));
     expect(Array.from(a)).not.toEqual(Array.from(c));
+  });
+});
+
+describe('Cajones de parrilla (b14 D1)', () => {
+  it('cada cajón está centrado en la posición del coche k de Simulation.placeOnGrid (±0,5 m)', () => {
+    const p = pos('start-line');
+    const CHECKER = 12 * 2 * 4, PER_BOX = 16;
+    expect(p.count).toBe(CHECKER + config.surfaces.gridSlots * PER_BOX);
+    const sim = new Simulation(track);
+    for (let k = 0; k < config.surfaces.gridSlots; k++) {
+      let x = 0, z = 0;
+      for (let v = 0; v < PER_BOX; v++) { x += p.getX(CHECKER + k * PER_BOX + v); z += p.getZ(CHECKER + k * PER_BOX + v); }
+      x /= PER_BOX; z /= PER_BOX;
+      sim.placeOnGrid(k);
+      const c = sim.state.car;
+      expect(Math.hypot(c.x - x, c.z - z), `cajón ${k}`).toBeLessThan(0.5);
+      const g = gridSlotCenter(track, k);
+      expect(Math.hypot(g.x - x, g.z - z)).toBeLessThan(0.05);
+      expect(Math.sign(c.d)).toBe(k % 2 === 0 ? 1 : -1);
+    }
   });
 });

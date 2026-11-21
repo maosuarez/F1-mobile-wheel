@@ -9,8 +9,11 @@ export type DrawOp =
   | { kind: 'text'; id: string; text: string; x: number; y: number; size: number; align: 'left' | 'center' | 'right'; color: string; weight?: number }
   | { kind: 'qr'; x: number; y: number; size: number };       // el panel copia aquí el canvas del QR de pairing.ts
 
+// Posición y vuelta de carrera (b14); ausente en práctica
+export interface PanelRace { pos: number; total: number; lap: number; laps: number }
+
 export type PanelScreen =
-  | { kind: 'hud'; model: HudModel }
+  | { kind: 'hud'; model: HudModel; race?: PanelRace }
   | { kind: 'pairing'; room: string; hint: string }
   | { kind: 'countdown'; n: number }
   | { kind: 'paused' };
@@ -23,7 +26,7 @@ const text = (id: string, t: string, x: number, y: number, size: number, align: 
   ({ kind: 'text', id, text: t, x, y, size, align, color, weight });
 
 // HUD: velocidad, marcha, vuelta, tiempos y un único aviso (el modelo ya trae el aviso prioritario resuelto)
-export function drawPanelModel(m: HudModel): DrawOp[] {
+export function drawPanelModel(m: HudModel, race?: PanelRace): DrawOp[] {
   const ops: DrawOp[] = [rect(0, 0, PANEL_W, PANEL_H, BG)];
   ops.push(text('speed', m.speed, 300, 250, 190, 'right'));
   ops.push(text('speedUnit', 'km/h', 320, 250, 44, 'left', DIM, 500));
@@ -32,6 +35,7 @@ export function drawPanelModel(m: HudModel): DrawOp[] {
   ops.push(text('lapTime', m.lapTime, 40, 340, 80, 'left', m.lapTimeInvalid ? BAD : FG));
   ops.push(text('last', `ÚLT ${m.last}`, 40, 420, 52, 'left', m.lastInvalid ? BAD : DIM, 600));
   ops.push(text('best', `MEJOR ${m.best}`, 40, 485, 52, 'left', DIM, 600));
+  if (race) ops.push(text('race', `P${race.pos}/${race.total} · V ${Math.min(race.lap, race.laps)}/${race.laps}`, 984, 70, 48, 'right', WARN));
   if (m.warn !== '') ops.push(text('warn', m.warn, 780, 440, 76, 'center', WARN));
   return ops;
 }
@@ -56,7 +60,7 @@ const HINT_MAX = 44;
 
 export function drawScreen(s: PanelScreen): DrawOp[] {
   switch (s.kind) {
-    case 'hud': return drawPanelModel(s.model);
+    case 'hud': return drawPanelModel(s.model, s.race);
     case 'pairing': return [
       rect(0, 0, PANEL_W, PANEL_H, BG),
       text('pairTitle', 'SALA', 40, 70, 44, 'left', DIM),

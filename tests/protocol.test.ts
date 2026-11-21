@@ -8,6 +8,27 @@ const IN: InMsg = { t: 'in', seq: 42, ts: 123456.789, steer: -0.25, thr: 0.8, br
 const TEL: TelMsg = { t: 'tel', spd: 287.4, gear: 7, rpm: 11800, leds: 12, drs: 2, ers: 0.6, ot: false,
   lap: 3, delta: -0.125, warn: 'PAUSA', echo: 123456.789, hold: 12.5 };
 
+describe('protocolo: pos/laps de carrera (b14), compatibles', () => {
+  it('un tel sin pos/laps sigue siendo válido y no los inventa', () => {
+    const t = decodeAtWheel(encode(TEL)) as TelMsg;
+    expect(t).toEqual(TEL);
+    expect('pos' in t || 'laps' in t).toBe(false);
+  });
+  it('un tel con pos y laps los conserva (enteros ≥ 1) y sigue por debajo de 300 bytes', () => {
+    const msg: TelMsg = { ...TEL, pos: 4, laps: 5 };
+    expect(decodeAtWheel(encode(msg))).toEqual(msg);
+    expect(new TextEncoder().encode(encode({ ...msg, spd: 359.999, delta: -99.999, warn: 'X'.repeat(24), dbg: { steer: -0.999, thr: 0.999, brk: 0.999, gear: 8 } })).length).toBeLessThan(300);
+    const t = decodeAtWheel(JSON.stringify({ ...TEL, pos: 0, laps: 5.4 })) as TelMsg;
+    expect(t.pos).toBe(1);
+    expect(t.laps).toBe(5);
+  });
+  it('pos/laps inválidos se ignoran sin invalidar el mensaje', () => {
+    const t = decodeAtWheel(JSON.stringify({ ...TEL, pos: 'x', laps: 5 })) as TelMsg;
+    expect(t.spd).toBe(TEL.spd);
+    expect('pos' in t).toBe(false);
+  });
+});
+
 describe('protocolo: codificación compacta', () => {
   it('redondea a 3 decimales', () => {
     expect(encode({ ...IN, steer: 0.123456789 })).toContain('"steer":0.123');

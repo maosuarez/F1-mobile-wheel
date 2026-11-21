@@ -5,7 +5,8 @@
 // | in      | volante -> PC  | 60 Hz      | seq, ts, steer [-1,1], thr [0,1], brk [0,1], ers, rtt (ms | null)       |
 // | ev      | volante -> PC  | al ocurrir | k: up | down | drs | cam | pause | recal | restart                        |
 // | tel     | PC -> volante  | 20 Hz      | spd, gear [-1,8], rpm, leds [0,16], drs 0|1|2, ers [0,1], ot, lap,      |
-// |         |                |            | delta (s | null), warn (<=24), echo, hold (ms), dbg? {steer,thr,brk,gear}|
+// |         |                |            | delta (s | null), warn (<=24), echo, hold (ms), dbg? {steer,thr,brk,gear},|
+// |         |                |            | pos?, laps? (carrera: posición y vueltas totales)                      |
 // | fx      | PC -> volante  | al ocurrir | k: kerb | grass | limits | shift | limiter                             |
 // | peer    | relay -> ambos | al ocurrir | role, connected                                                        |
 // | ping    | relay -> ambos | 2 s        | (responder pong)                                                       |
@@ -18,7 +19,8 @@ export interface InMsg  { t: 'in'; seq: number; ts: number; steer: number; thr: 
 export interface EvMsg  { t: 'ev'; k: EvKey }
 export interface TelHint { steer: number; thr: number; brk: number; gear: number }
 export interface TelMsg { t: 'tel'; spd: number; gear: number; rpm: number; leds: number; drs: 0|1|2; ers: number; ot: boolean;
-  lap: number; delta: number | null; warn: string; echo: number; hold: number; dbg?: TelHint }
+  lap: number; delta: number | null; warn: string; echo: number; hold: number; dbg?: TelHint;
+  pos?: number; laps?: number }   // pos/laps: solo en carrera (b14); opcionales y compatibles
 export interface FxMsg  { t: 'fx'; k: FxKey }
 export interface PeerMsg { t: 'peer'; role: Role; connected: boolean }
 export interface PingMsg { t: 'ping' }  export interface PongMsg { t: 'pong' }
@@ -85,6 +87,8 @@ function decodeTel(o: Obj): TelMsg | null {
     lap: Math.max(0, Math.round(lap)), delta, warn: warn.slice(0, WARN_MAX), echo, hold: Math.max(0, hold),
   };
   if (dbg) msg.dbg = dbg;
+  // pos/laps opcionales (b14): si no son números válidos se ignoran sin invalidar el mensaje
+  if (isNum(o.pos) && isNum(o.laps)) { msg.pos = Math.max(1, Math.round(o.pos)); msg.laps = Math.max(1, Math.round(o.laps)); }
   return msg;
 }
 

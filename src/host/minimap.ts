@@ -7,7 +7,17 @@ import type { Track } from '../track/types';
 const MARGIN_PX = 14;
 const STROKE_PX = 4;
 const CAR_R = 5;
+const RIVAL_R = 3.5;
 export const MINIMAP_FALLBACK_PX = 256;   // tamaño interno si el canvas no tiene layout (VR)
+
+// Rival a pintar (b14): pose actual y escudería (índice en `teamColors`)
+export interface MinimapRival { team: number; cur: { x: number; z: number } }
+
+// Punto (x derecha, y adelante) en metros en el sistema del coche; mismo convenio que buildMinimapPath
+export function minimapPoint(car: { x: number; z: number; yaw: number }, x: number, z: number): { x: number; y: number } {
+  const c = Math.cos(car.yaw), sn = Math.sin(car.yaw), dx = x - car.x, dz = z - car.z;
+  return { x: dx * sn + dz * c, y: dx * c - dz * sn };
+}
 
 export class Minimap {
   private readonly ctx: CanvasRenderingContext2D | null;
@@ -42,7 +52,7 @@ export class Minimap {
     this.canvasEl.width = px; this.canvasEl.height = px;
   }
 
-  update(car: CarState, nowMs: number): void {
+  update(car: CarState, nowMs: number, rivals: readonly MinimapRival[] = [], teamColors: readonly string[] = []): void {
     const ctx = this.ctx;
     if (!ctx || !this.visible || nowMs - this.lastMs < this.minDtMs) return;
     this.lastMs = nowMs;
@@ -70,6 +80,16 @@ export class Minimap {
     this.stroke(ctx, iCar, n - 1, cx, cy, scale, '#ffffff', null);
     // Curvas fuertes superpuestas (solo por delante)
     this.stroke(ctx, iCar, n - 1, cx, cy, scale, '#ffb020', strong);
+
+    // Rivales: punto del color de su escudería (el recorte circular descarta los que quedan fuera)
+    for (const r of rivals) {
+      const q = minimapPoint(car, r.cur.x, r.cur.z);
+      const px = cx + q.x * scale, py = cy - q.y * scale;
+      ctx.beginPath();
+      ctx.arc(px, py, RIVAL_R * k, 0, Math.PI * 2);
+      ctx.fillStyle = teamColors[r.team] ?? '#ffffff'; ctx.fill();
+      ctx.lineWidth = 1.5 * k; ctx.strokeStyle = '#0a0c10'; ctx.stroke();
+    }
 
     ctx.beginPath();
     ctx.arc(cx, cy, CAR_R * k, 0, Math.PI * 2);

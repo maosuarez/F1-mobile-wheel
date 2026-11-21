@@ -94,4 +94,11 @@ describe('panel VR: leyenda de los mandos (b9)', () => {
   it('el HUD de carrera no lleva leyenda', () => {
     expect(ops(mk()).some((x) => x.kind === 'text' && x.id.startsWith('legend'))).toBe(false);
   });
+  it('carrera: posición y vuelta en el panel; en práctica no aparecen', () => {
+    const o = drawPanelModel(hudModel(mk(), '', none), { pos: 4, total: 10, lap: 2, laps: 5 });
+    expect(txt(o, 'race')).toBe('P4/10 · V 2/5');
+    expect(txt(drawPanelModel(hudModel(mk(), '', none), { pos: 1, total: 10, lap: 6, laps: 5 }), 'race')).toBe('P1/10 · V 5/5');
+    expect(txt(ops(mk()), 'race')).toBeUndefined();
+    expect(txt(drawScreen({ kind: 'hud', model: hudModel(mk(), '', none), race: { pos: 4, total: 10, lap: 2, laps: 5 } }), 'race')).toBe('P4/10 · V 2/5');
+  });
 });
