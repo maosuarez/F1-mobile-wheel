@@ -15,6 +15,7 @@ from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from tools.track.racing_line import racing_line
 from tools.track.tracks import TRACKS, TrackSpec
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -428,8 +429,150 @@ def propose_metadata(cl: Centerline, ff: FastF1Data, tr: Transform, spec: TrackS
     kerbs = [k for k in kerbs if k["s1"] - k["s0"] >= 20]
     kerbs = _merge_kerbs(kerbs, L)
     kerbs = [{"s0": round(k["s0"], 3), "s1": round(k["s1"], 3), "side": k["side"]} for k in kerbs]
+    edge = propose_edge(cl, kerbs, drs)
     return {"start_s": 0.0, "sectors_s": sectors, "drs_zones": drs, "corners": corners,
-            "kerbs": kerbs, "runoff_m": 18.0, "sources": {}}
+            "kerbs": edge["kerbs"], "runoff_m": 18.0, "sources": {}, "runoffs": edge["runoffs"],
+            "barriers": edge["barriers"], "boards": edge["boards"]}
+
+
+# ---------------------------------------------------------------- borde de pista (D3)
+MU, G, U_LAT, V_MAX = 1.7, 9.81, 0.72, 95.0       # = config.car.mu, sim.g, autopilot.latGripUse/maxSpeedMs
+AERO_K = 0.5 * 1.2 * 4.0 / 800.0                   # ½ρ·ClA/m
+BRAKE_USE = 0.65 * 0.85                            # autopilot.brakeGripUse · car.brakeGripFactor
+DROP_MS = 80 / 3.6                                 # caída de velocidad que cuenta como frenada fuerte
+RUNOFF_CODE = {"grass": 0, "asphalt": 1, "gravel": 2}
+BARRIER_CODE = {"armco": 0, "tecpro": 1, "concrete": 2}
+
+
+def speed_profile(k: np.ndarray, step: float) -> np.ndarray:
+    """Perfil de velocidad del autopilot replicado: v = sqrt(μ g u / |k|) ≤ 95 y frenada hacia atrás."""
+    v = np.minimum(V_MAX, np.sqrt(MU * G * U_LAT / np.maximum(np.abs(k), 1e-9)))
+    for _ in range(2):
+        for _j in range(2 * len(v)):  # barrido circular hacia atrás
+            j = (len(v) - 1 - _j) % len(v)
+            vn = v[(j + 1) % len(v)]
+            dec = BRAKE_USE * MU * (G + AERO_K * vn * vn)
+            v[j] = min(v[j], np.sqrt(vn * vn + 2 * dec * step))
+    return v
+
+
+def braking_zones(cl: Centerline) -> list[dict]:
+    """Frenadas con caída > 80 km/h: s de inicio, s de fin (vértice) y signo de la curva (k)."""
+    n, st = cl.n, cl.step_m
+    v = speed_profile(cl.k, st)
+    braking = _merge_gaps(np.roll(v, -1) < v - 1e-3, int(20 / st))
+    zones = []
+    for a, b in _runs(braking):
+        ln = (b - a) % n + 1
+        idx = (a + np.arange(ln + 1)) % n
+        if v[idx[0]] - v[idx[-1]] < DROP_MS:
+            continue
+        # vértice: máx |k| en los 80 m siguientes al fin de la frenada
+        ahead = (b + np.arange(1, int(80 / st) + 1)) % n
+        apex = int(ahead[np.argmax(np.abs(cl.k[ahead]))])
+        sign = 1 if cl.k[apex] > 0 else -1
+        # tramo de curva: |k| > 1/150 alrededor del vértice (máx 250 m a cada lado)
+        lim = int(250 / st)
+        i0 = i1 = 0
+        while i0 < lim and abs(cl.k[(apex - i0 - 1) % n]) > 1 / 150:
+            i0 += 1
+        while i1 < lim and abs(cl.k[(apex + i1 + 1) % n]) > 1 / 150:
+            i1 += 1
+        zones.append({"brake_s": a * st, "apex_s": apex * st, "c0": (apex - i0) % n * st,
+                      "c1": (apex + i1) % n * st, "sign": sign, "drop": float(v[idx[0]] - v[idx[-1]])})
+    return zones
+
+
+def _fill(arr: np.ndarray, s0: float, s1: float, st: float, val: int, only_if: tuple | None = None) -> None:
+    n = len(arr)
+    i0 = int(round(s0 / st))
+    ln = int(round(((s1 - s0) % (n * st)) / st)) + 1
+    for q in range(ln):
+        i = (i0 + q) % n
+        if only_if is None or arr[i] in only_if:
+            arr[i] = val
+
+
+def _tramos(arr: np.ndarray, code: dict, st: float, min_len: float = 10.0) -> list[dict]:
+    """Tablas por muestra (izq, der) → tramos {s0,s1,side,type} contiguos del mismo tipo."""
+    n, L = arr[0].shape[0], arr[0].shape[0] * st
+    out = []
+    for side, a in zip(("left", "right"), arr):
+        for name, c in code.items():
+            for i, j in _runs(a == c):
+                s0, s1 = i * st, j * st
+                if (s1 - s0) % L < min_len:
+                    continue
+                out.append({"s0": round(s0, 3), "s1": round(s1, 3), "side": side, "type": name})
+    return sorted(out, key=lambda d: (d["s0"], d["side"]))
+
+
+def propose_edge(cl: Centerline, kerbs: list[dict], drs: list[dict]) -> dict:
+    """Heurísticas D3: escapatorias, barreras, tipos de piano y carteles."""
+    n, st, L = cl.n, cl.step_m, cl.length
+    zones = braking_zones(cl)
+    ro = {"left": np.zeros(n, np.uint8), "right": np.zeros(n, np.uint8)}
+    for z in zones:
+        out_side, in_side = ("right", "left") if z["sign"] > 0 else ("left", "right")
+        _fill(ro[out_side], z["c0"], z["c1"], st, 2)                              # grava en el exterior
+        _fill(ro[in_side], z["c0"], z["c1"], st, 1)                               # asfalto en el interior
+        _fill(ro[out_side], z["c1"], (z["c1"] + 60) % L, st, 1, only_if=(0,))      # 60 m tras el vértice
+    br = {"left": np.zeros(n, np.uint8), "right": np.zeros(n, np.uint8)}
+    for side in ("left", "right"):
+        br[side][ro[side] == 2] = 1                                               # tecpro tras la grava
+    # recta principal (la de la meta): hormigón en ambos lados donde no hay tecpro
+    straight = _merge_gaps(np.abs(cl.k) < 1 / 500, int(30 / st))
+    for a, b in _runs(straight):
+        if straight[0] and ((a <= b and a <= 0 <= b) or (a > b)):
+            for side in ("left", "right"):
+                _fill(br[side], a * st, b * st, st, 2, only_if=(0,))
+    # pianos
+    typed = []
+    for kb in kerbs:
+        ln = (kb["s1"] - kb["s0"]) % L
+        idx = (int(round(kb["s0"] / st)) + np.arange(int(ln / st) + 1)) % n
+        kk = cl.k[idx]
+        inner = (kb["side"] == "left") == (kk.mean() > 0)
+        t = "flat"
+        if inner and np.abs(kk).max() > 0.03:
+            t = "serrated"
+        elif not inner:
+            pre = (int(round(kb["s0"] / st)) + np.arange(-int(15 / st), int(10 / st))) % n
+            if np.abs(cl.k[pre]).max() > 0.02:
+                t = "sausage"
+        typed.append({**kb, "type": t})
+    boards = []
+    for z in zones:
+        side = "right" if z["sign"] > 0 else "left"
+        for m in (150, 100, 50):
+            boards.append({"s": round((z["brake_s"] - m) % L, 3), "side": side, "m": m})
+    boards.sort(key=lambda b: b["s"])
+    return {"runoffs": _tramos((ro["left"], ro["right"]), RUNOFF_CODE, st),
+            "barriers": _tramos((br["left"], br["right"]), BARRIER_CODE, st, 5.0),
+            "kerbs": typed, "boards": boards}
+
+
+def _segs(a: float, b: float, L: float) -> list[tuple[float, float]]:
+    return [(a, b)] if a <= b else [(a, L), (0.0, b)]
+
+
+def _subtract(items: list[dict], r: dict, L: float) -> list[dict]:
+    """Quita de los tramos de r['side'] el intervalo de r (con envoltura)."""
+    out = []
+    for it in items:
+        if it["side"] != r["side"] or not _overlap(it, r, L):
+            out.append(it)
+            continue
+        for a, b in _segs(it["s0"], it["s1"], L):
+            cuts = sorted((max(a, c), min(b, d)) for c, d in _segs(r["s0"], r["s1"], L) if c < b and a < d)
+            pos = a
+            for c, d in cuts:
+                if c - pos > 1e-6:
+                    out.append({**it, "s0": round(pos, 3), "s1": round(c, 3)})
+                pos = max(pos, d)
+            if b - pos > 1e-6:
+                out.append({**it, "s0": round(pos, 3), "s1": round(min(b, L - 0.001), 3)})
+    return out
 
 
 def _overlap(k: dict, r: dict, L: float) -> bool:
@@ -457,6 +600,20 @@ def apply_overrides(meta: dict, path: Path, L: float) -> dict:
         meta["sources"]["kerbs_remove"] = "override"
     if ov.get("kerbs_add"):
         meta["kerbs"] += ov["kerbs_add"]; meta["sources"]["kerbs_add"] = "override"
+    for key in ("runoffs", "barriers"):  # el override sustituye por completo a la heurística donde solapa
+        for r in ov.get(key, []):
+            meta[key] = _subtract(meta.get(key, []), r, L)
+        if ov.get(key):
+            meta[key] = sorted(meta[key] + [dict(r) for r in ov[key]], key=lambda d: (d["s0"], d["side"]))
+            meta["sources"][key] = "override"
+    if ov.get("boards"):
+        near = lambda a, b: min((a - b) % L, (b - a) % L) < 160.0  # noqa: E731
+        meta["boards"] = [b for b in meta.get("boards", []) if not any(near(b["s"], o["s"]) for o in ov["boards"])]
+        meta["boards"] = sorted(meta["boards"] + [dict(o) for o in ov["boards"]], key=lambda b: b["s"])
+        meta["sources"]["boards"] = "override"
+    for i, tp in ov.get("kerb_types", {}).items():
+        meta["kerbs"][int(i)]["type"] = tp
+        meta["sources"]["kerb_types"] = "override"
     return meta
 
 
@@ -466,7 +623,7 @@ def _r(a, d) -> list:
 
 
 def write_json(path: Path, spec: TrackSpec, cl: Centerline, y: np.ndarray, d: dict, meta: dict,
-               direction: str) -> None:
+               direction: str, rl: np.ndarray | None = None) -> None:
     n = cl.n
     samples = {
         "s": _r(np.arange(n) * cl.step_m, 3), "x": _r(cl.xy[:, 0], 3), "y": _r(y, 3),
@@ -474,12 +631,17 @@ def write_json(path: Path, spec: TrackSpec, cl: Centerline, y: np.ndarray, d: di
         "nx": _r(d["nx"], 6), "nz": _r(d["nz"], 6), "k": _r(d["k"], 6),
         "pitch": _r(d["pitch"], 6), "bank": _r(d["bank"], 6),
     }
+    if rl is not None:
+        samples["rl"] = _r(rl, 3)
     doc = {
         "id": spec.id, "name": spec.name, "length_m": round(n * cl.step_m, 3),
         "direction": direction, "step_m": round(cl.step_m, 8), "samples": samples,
         "start_s": meta["start_s"], "sectors_s": meta["sectors_s"], "drs_zones": meta["drs_zones"],
         "corners": meta["corners"], "kerbs": meta["kerbs"], "runoff_m": meta["runoff_m"],
     }
+    for key in ("runoffs", "barriers", "boards"):
+        if key in meta:
+            doc[key] = meta[key]
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(doc, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
@@ -493,7 +655,7 @@ def _plot_common():
     return plt
 
 
-def plot_plan(path: Path, cl: Centerline, meta: dict, direction: str) -> None:
+def plot_plan(path: Path, cl: Centerline, meta: dict, direction: str, rl: np.ndarray | None = None) -> None:
     plt = _plot_common()
     fig, ax = plt.subplots(figsize=(16, 12), dpi=100)
     st, n, L = cl.step_m, cl.n, cl.length
@@ -512,10 +674,28 @@ def plot_plan(path: Path, cl: Centerline, meta: dict, direction: str) -> None:
     for z in meta["drs_zones"]:
         idx = seg(z["start_s"], z["end_s"])
         ax.plot(*cl.xy[idx].T, color="limegreen", lw=6, alpha=0.7, zorder=2, label="DRS")
+    ro_col = {"asphalt": "#444444", "gravel": "#d9b44a", "grass": "#66aa55"}
+    br_col = {"tecpro": "#d62728", "armco": "#1f77b4", "concrete": "#7f7f7f"}
+    ro_m = meta.get("runoff_m", 18.0)
+    for r in meta.get("runoffs", []):
+        idx = seg(r["s0"], r["s1"])
+        e = (left + nrm * ro_m * 0.5)[idx] if r["side"] == "left" else (right - nrm * ro_m * 0.5)[idx]
+        ax.plot(*e.T, color=ro_col[r["type"]], lw=5, zorder=2, alpha=0.8, label=f"escapatoria {r['type']}")
+    for b in meta.get("barriers", []):
+        idx = seg(b["s0"], b["s1"])
+        e = (left + nrm * ro_m)[idx] if b["side"] == "left" else (right - nrm * ro_m)[idx]
+        ax.plot(*e.T, color=br_col[b["type"]], lw=2, zorder=3, label=f"barrera {b['type']}")
+    k_col = {"flat": "red", "serrated": "magenta", "sausage": "gold"}
     for kb in meta["kerbs"]:
         idx = seg(kb["s0"], kb["s1"])
         pts = left[idx] if kb["side"] == "left" else right[idx]
-        ax.plot(*pts.T, color="red", lw=3, zorder=3, label="Pianos")
+        ax.plot(*pts.T, color=k_col[kb.get("type", "flat")], lw=3, zorder=4,
+                label=f"piano {kb.get('type', 'flat')}")
+    for bd in meta.get("boards", []):
+        i = int(round(bd["s"] / st)) % n
+        p = (left[i] + nrm[i] * 6) if bd["side"] == "left" else (right[i] - nrm[i] * 6)
+        ax.plot(*p, "s", color="white", mec="k", ms=5, zorder=5, label="carteles")
+        ax.annotate(str(bd["m"]), p, xytext=(3, 3), textcoords="offset points", fontsize=7)
     for c in meta["corners"]:
         i = int(round(c["s"] / st)) % n
         p = cl.xy[i] + nrm[i] * (cl.wl[i] + 25) * (1 if True else -1)
@@ -524,6 +704,8 @@ def plot_plan(path: Path, cl: Centerline, meta: dict, direction: str) -> None:
         i = int(round(sx / st)) % n
         ax.plot(*cl.xy[i], "o", color="orange", ms=10, zorder=4)
         ax.annotate(f"S{j}|S{j+1}", cl.xy[i], xytext=(8, 8), textcoords="offset points", color="darkorange")
+    if rl is not None:
+        ax.plot(*(cl.xy + nrm * rl[:, None]).T, color="purple", lw=1.2, zorder=4, label="trazada ideal")
     ax.plot(0, 0, "s", color="blue", ms=12, zorder=5)
     ax.annotate("META", (0, 0), xytext=(10, -14), textcoords="offset points", color="blue", weight="bold")
     a = cl.xy[10]
@@ -553,12 +735,44 @@ def plot_elev(path: Path, cl: Centerline, y: np.ndarray, meta: dict) -> None:
     plt.close(fig)
 
 
+def _selftest() -> int:
+    import tempfile
+    L = 4000.0
+    meta = {"sources": {}, "kerbs": [], "corners": [],
+            "runoffs": [{"s0": 100.0, "s1": 300.0, "side": "left", "type": "asphalt"},
+                        {"s0": 3900.0, "s1": 50.0, "side": "left", "type": "grass"}],
+            "barriers": [{"s0": 0.0, "s1": 500.0, "side": "right", "type": "armco"}],
+            "boards": [{"s": 1000.0, "side": "right", "m": 150}, {"s": 2000.0, "side": "right", "m": 150}]}
+    ov = {"runoffs": [{"s0": 150.0, "s1": 200.0, "side": "left", "type": "gravel"}],
+          "barriers": [{"s0": 200.0, "s1": 250.0, "side": "right", "type": "tecpro"}],
+          "boards": [{"s": 1050.0, "side": "left", "m": 100}]}
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "ov.json"
+        p.write_text(json.dumps(ov))
+        m = apply_overrides(meta, p, L)
+    ro = [r for r in m["runoffs"] if r["side"] == "left" and r["s0"] < 300 and r["s1"] > 100]
+    inside = [r for r in ro if r["s0"] < 200 and r["s1"] > 150]
+    ok = len(inside) == 1 and inside[0]["type"] == "gravel"
+    ok &= any(r["type"] == "asphalt" and r["s1"] <= 150.001 for r in ro) and any(
+        r["type"] == "asphalt" and r["s0"] >= 199.99 for r in ro)
+    ok &= any(r["type"] == "grass" and r["s0"] > r["s1"] for r in m["runoffs"])  # envoltura intacta
+    ok &= [b["type"] for b in m["barriers"] if _overlap(b, {"s0": 210, "s1": 240}, L)] == ["tecpro"]
+    ok &= [b["s"] for b in m["boards"]] == [1050.0, 2000.0]
+    print(f"{'OK' if ok else 'FAIL'} apply_overrides: prevalencia por solape")
+    return 0 if ok else 1
+
+
 # ---------------------------------------------------------------- principal
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--track", required=True)
+    ap.add_argument("--track")
     ap.add_argument("--debug-step", choices=STEPS)
+    ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
+    if args.selftest:
+        sys.exit(_selftest())
+    if not args.track:
+        die("falta --track")
     if args.track not in TRACKS:
         die(f"circuito desconocido '{args.track}'. Soportados: {', '.join(sorted(TRACKS))}")
     spec = TRACKS[args.track]
@@ -603,6 +817,7 @@ def main() -> None:
               f"max|pitch|={np.abs(d['pitch']).max():.4f}")
         return
 
+    rl = racing_line(cl.xy[:, 0], -cl.xy[:, 1], cl.wl, cl.wr)
     meta = propose_metadata(cl, ff, tr, spec)
     meta = apply_overrides(meta, ov_path, cl.length)
     if args.debug_step == "meta":
@@ -614,8 +829,8 @@ def main() -> None:
     out_json = ROOT / "public" / "track" / f"{spec.id}.json"
     out_dir = ROOT / "out"
     out_dir.mkdir(exist_ok=True)
-    write_json(out_json, spec, cl, y, d, meta, direction)
-    plot_plan(out_dir / f"{spec.id}_plan.png", cl, meta, direction)
+    write_json(out_json, spec, cl, y, d, meta, direction, rl)
+    plot_plan(out_dir / f"{spec.id}_plan.png", cl, meta, direction, rl)
     plot_elev(out_dir / f"{spec.id}_elev.png", cl, y, meta)
     src = ", ".join(f"{k}={v}" for k, v in meta["sources"].items()) or "ninguno"
     print(f"Circuito: {spec.id}  FastF1 año {ff.year} ({ff.n_laps} vueltas)")
@@ -623,6 +838,10 @@ def main() -> None:
     print(f"Residuo de alineación: {resid:.2f} m  elevación: {y.min():.1f}..{y.max():.1f} m")
     print(f"Curvas: {len(meta['corners'])}  pianos: {len(meta['kerbs'])}  zonas DRS: "
           f"{len(meta['drs_zones'])}  overrides: {src}")
+    from collections import Counter
+    print(f"Escapatorias: {dict(Counter(r['type'] for r in meta['runoffs']))}  barreras: "
+          f"{dict(Counter(b['type'] for b in meta['barriers']))}  pianos: "
+          f"{dict(Counter(k.get('type', 'flat') for k in meta['kerbs']))}  carteles: {len(meta['boards'])}")
     print(f"Escrito: {out_json}")
 
 

@@ -106,6 +106,44 @@ def check_world(spec_id: str) -> None:
           f"mín edificios={mn['otros']:.2f} gradas={mn['gr']:.2f}")
 
 
+def check_edge(d: dict, a: dict, n: int, L: float, st: float) -> None:
+    """Escenarios de track-data (campos opcionales) y trackside (trazada, cobertura)."""
+    sm = d["samples"]
+    if "rl" in sm:
+        rl = np.asarray(sm["rl"], float)
+        check(len(rl) == n and np.isfinite(rl).all(), "samples.rl longitud N", f"{len(rl)} vs {n}")
+        tol = 1e-3
+        inb = ((rl >= -a["wr"] + 1.2 - tol) & (rl <= a["wl"] - 1.2 + tol)).all() if len(rl) == n else False
+        check(inb, "rl dentro de [-wr+1,2, wl-1,2]", f"[{rl.min():.2f},{rl.max():.2f}]")
+        from tools.track.racing_line import curvature_sq
+        c0 = curvature_sq(a["x"], a["z"], st)
+        c1 = curvature_sq(a["x"] + rl * a["nx"], a["z"] + rl * a["nz"], st)
+        check(c1 <= 0.8 * c0, "curvatura² de rl >= 20 % menor que la línea central", f"-{(1 - c1 / c0) * 100:.1f} %")
+    elif d["id"] == "interlagos":
+        check(False, "samples.rl presente", "falta")
+    for key, types in (("runoffs", {"asphalt", "gravel", "grass"}), ("barriers", {"tecpro", "armco", "concrete"})):
+        its = d.get(key)
+        if its is None:
+            continue
+        ok = all(0 <= q["s0"] < L and 0 <= q["s1"] < L and q["side"] in ("left", "right") and q["type"] in types
+                 for q in its)
+        check(ok, f"{key}: s0,s1 en [0,L), lado y tipo válidos", f"{len(its)} tramos")
+        if d["id"] == "interlagos":
+            got = {q["type"] for q in its}
+            check(got == types, f"{key}: un tramo de cada tipo", sorted(got))
+    kt = [q.get("type", "flat") for q in d["kerbs"]]
+    check(set(kt) <= {"flat", "serrated", "sausage"}, "pianos: tipo válido", sorted(set(kt)))
+    bd = d.get("boards")
+    if bd is not None:
+        ok = all(0 <= b["s"] < L and b["side"] in ("left", "right") and b["m"] in (150, 100, 50) for b in bd)
+        sets = {round(b["s"] + b["m"], 0) for b in bd}
+        check(ok, "boards válidos", f"{len(bd)} carteles")
+        if d["id"] == "interlagos":
+            full = sum(1 for g in sets if all(any(abs(((b["s"] + b["m"]) - g + L / 2) % L - L / 2) < 2 and b["m"] == m
+                                                  for b in bd) for m in (150, 100, 50)))
+            check(full >= 3, "al menos 3 juegos de carteles 150/100/50", f"{full} juegos")
+
+
 def main() -> int:
     args = sys.argv[1:]
     world = "--world" in args
@@ -236,6 +274,7 @@ def main() -> int:
         kok &= len(kb) >= 8
     check(kok, "pianos (>=8, 20-400 m, separación >=15 m)", f"{len(kb)} tramos")
     check(d["runoff_m"] > 0, "runoff_m > 0", d["runoff_m"])
+    check_edge(d, a, n, L, st)
     if world:
         check_world(d["id"])
     return report()
