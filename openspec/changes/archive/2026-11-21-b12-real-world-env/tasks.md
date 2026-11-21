@@ -17,4 +17,4 @@
 
 ## 3. Cierre (Fable)
 
-- [ ] 3.1 `npx vitest run` y `npm run build` en verde; draw calls ≤ 200 en el panel F3 con todo activado; revisión visual de las capturas; `code-review-graph build` + `detect_changes`; commit `feat(track): entorno real de Interlagos desde OSM y DEM` vía `commit-orchestrator`; `/opsx:archive b12-real-world-env`.
+- [x] 3.1 `npx vitest run` y `npm run build` en verde; draw calls ≤ 200 en el panel F3 con todo activado; revisión visual de las capturas; `code-review-graph build` + `detect_changes`; commit `feat(track): entorno real de Interlagos desde OSM y DEM` vía `commit-orchestrator`; `/opsx:archive b12-real-world-env`.
