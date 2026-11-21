@@ -78,7 +78,8 @@ export const config = {
   // Sensaciones (b5, design D1)
   audio:  { masterGain: 0.6, cylindersFactor: 3, idleGain: 0.28, fullGain: 0.85, cutoffMinHz: 500, cutoffMaxHz: 5200,
             rpmCutoffBoost: 0.6, squareMix: 0.35, turboGain: 0.12, windGain: 0.35, windRefMs: 90,
-            paramTauS: 0.02, shiftDipS: 0.04, shiftDipGain: 0.3, crackS: 0.05, crackGain: 0.5, limiterHz: 15, limiterDepth: 0.5 },
+            paramTauS: 0.02, shiftDipS: 0.04, shiftDipGain: 0.3, crackS: 0.05, crackGain: 0.5, limiterHz: 15, limiterDepth: 0.5,
+            rivalGain: 0.35, rivalMaxM: 80, rivalVoices: 2, rivalRefM: 8 },
   camera: { defaultMode: 'helmet' as 'helmet' | 'chase' | 'tv', fovMinDeg: 70, fovMaxDeg: 84, fovRefKmh: 320,
             chase: { distM: 7.5, heightM: 2.6, lookAheadM: 8, omega: 9, velocityBlend: 0.7 },
             helmet: { offset: [0.15, 0.82, 0] as [number, number, number], rollDegPerG: 1.0, pitchDegPerG: 0.6, maxDeg: 6, lookSteerDeg: 5, omega: 14 },
@@ -87,7 +88,15 @@ export const config = {
   fx:     { minGapMs: 80, kerbRepeatMs: 120, grassRepeatMs: 300, limiterRepeatMs: 100, minSpeedKmh: 20 },
   // Red y emparejamiento con el volante (b3, design D4)
   net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000 },
-  race:  { countdownS: 3, restartHoldMs: 1000 },
+  // Carrera (b14, design D8). Distancias en metros, tiempos en s; colisiones: 2 círculos por coche en ±carHalfLenM
+  race:  { countdownS: 3, restartHoldMs: 1000,
+           laps: 5, lightsIntervalS: 1, lightsHoldMinS: 0.2, lightsHoldMaxS: 3, gapStepM: 50, finishTimeoutS: 60,
+           carRadiusM: 0.95, carHalfLenM: 1.6, restitution: 0.2, hitSpeedLoss: 0.03, hitYawKick: 0.05,
+           drsGapS: 1, drsFromLap: 2, playerGridSlot: 6, rivalCullM: 600, defaultRivals: 9 },
+  // IA de rivales (b14, design D3). Distancias en m, velocidades en m/s; niveles: uso del agarre lateral y de frenada
+  ai:    { followM: 30, overtakeCloseMs: 1.5, offsetRateMs: 1.5, edgeMarginM: 1.2, brakeGapS: 0.6,
+           levels: { easy: { gripUse: 0.80, brakeUse: 0.70 }, medium: { gripUse: 0.87, brakeUse: 0.78 },
+                     hard: { gripUse: 0.93, brakeUse: 0.85 } } },
   // Minimapa de anticipación (b8, design D1). Distancias en metros; carY = fracción del alto desde arriba
   minimap: { aheadM: 350, behindM: 60, stepM: 5, cornerK: 0.008, redrawHz: 30, carY: 0.72 },
   // Modo VR (b7, design D10). steerRampPerS = 1 / keyboard.steerRiseS (misma rampa que el teclado); distancias en metros

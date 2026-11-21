@@ -17,6 +17,7 @@ export class Simulation {
   readonly state: SimState;
   readonly timer: LapTimer;
   assists: { autoShift: boolean } = { autoShift: true };   // el host lo pone a false al tomar el control el volante
+  drsEnabled = true;                                        // habilitación del DRS (b14 D4): en carrera la fija RaceSession
   private brakePowerW = 0;                                  // potencia de frenado del paso anterior (recarga del ERS)
 
   constructor(track: Track, cfg: GameConfig = defaultConfig) {
@@ -36,7 +37,7 @@ export class Simulation {
     const sPrev = car.s;
     const tPrev = st.t;
     stepGearbox(car, input, commands, this.assists.autoShift, cfg, events);
-    stepDrs(car, input, commands, this.track, cfg, events);
+    stepDrs(car, input, commands, this.track, cfg, events, this.drsEnabled);
     stepErs(car, input, this.brakePowerW, cfg);
     const loc = stepCar(car, input, this.track, cfg, events);
     this.brakePowerW = car.brake * cfg.car.brakeGripFactor
@@ -61,15 +62,24 @@ export class Simulation {
     this.timer.reset();
   }
 
+  // Cajón de parrilla (b14 D1): s = startS − startOffsetM − slot·gridSpacingM, d = ±gridOffsetM (par a la izquierda,
+  // mismo lado que los cajones pintados en mesh.ts), parado y con el cronómetro a cero.
+  placeOnGrid(slot: number): void {
+    this.reset();
+    const sv = this.cfg.surfaces;
+    const s = this.track.startS - this.cfg.sim.startOffsetM - slot * sv.gridSpacingM;
+    this.placeAt(wrapS(this.track, s), slot % 2 === 0 ? sv.gridOffsetM : -sv.gridOffsetM);
+  }
+
   // Tecla R: línea central en el s actual, parado, rumbo de pista.
   recenter(): void {
     this.placeAt(this.state.car.s);
   }
 
-  private placeAt(s: number): void {
+  private placeAt(s: number, d = 0): void {
     const car = this.state.car;
     const p = sampleAt(this.track, s);
-    car.x = p.x; car.z = p.z; car.yaw = p.heading;
+    car.x = p.x + d * p.nx; car.z = p.z + d * p.nz; car.yaw = p.heading;
     car.vx = 0; car.vz = 0; car.speed = 0; car.vLong = 0; car.vLat = 0; car.yawRate = 0;
     car.steerAngle = 0; car.throttle = 0; car.brake = 0; car.aLong = 0; car.aLat = 0; car.slip = 0;
     // Mecánicas: 1.ª, DRS cerrado, sin corte ni despliegue (batería y temperatura se conservan)
@@ -77,7 +87,7 @@ export class Simulation {
     car.drs = 0; car.overtake = false; car.ersDeployKw = 0;
     clearGearboxQueue(car);
     this.brakePowerW = 0;
-    const loc = locate(this.track, p.x, p.z, Math.round(wrapS(this.track, s) / this.track.step));
+    const loc = locate(this.track, car.x, car.z, Math.round(wrapS(this.track, s) / this.track.step));
     car.s = loc.s; car.d = loc.d; car.trackIndex = loc.i; car.surface = loc.surface; car.kerbSide = loc.kerbSide;
     car.y = loc.y + loc.bank * loc.d; car.pitch = p.pitch; car.roll = loc.bank;
   }

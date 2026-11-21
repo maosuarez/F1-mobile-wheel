@@ -4,10 +4,11 @@ import type { Track } from '../track/types';
 import type { CarState, DriverCommand, DriverInput, SimEvent } from './types';
 
 // DRS: disponible en zona, apertura y cierre manual, cierre automático al frenar o salir (design D3, skill f1-car-feel §6).
+// enabled: habilitación por detección (b14 D4). En práctica siempre true; en carrera la decide RaceSession en detect_s.
 
 export function stepDrs(car: CarState, input: DriverInput, commands: readonly DriverCommand[], track: Track,
-                        cfg: GameConfig, events: SimEvent[]): void {
-  if (drsZoneAt(track, car.s) < 0) {
+                        cfg: GameConfig, events: SimEvent[], enabled = true): void {
+  if (!enabled || drsZoneAt(track, car.s) < 0) {
     if (car.drs === 2) events.push({ type: 'drs', open: false });
     car.drs = 0;
     return;

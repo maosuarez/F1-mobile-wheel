@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { config } from '../src/shared/config';
 import { aeroFactors } from '../src/sim/drs';
+import { RaceSession } from '../src/sim/race';
 import { Simulation } from '../src/sim/simulation';
 import type { SimEvent } from '../src/sim/types';
 import type { Track } from '../src/track/types';
-import { makeStraightTrack } from '../src/track/synthetic';
+import { makeOvalTrack, makeStraightTrack } from '../src/track/synthetic';
 import { full, holdSpeed, kmh, ms, place, runFor, runUntil } from './helpers/drive';
+import { laneInput } from './helpers/race';
 
 // Toda la potencia disponible (batería y límite por vuelta prácticamente ilimitados).
 const cfg = () => {
@@ -133,5 +135,74 @@ describe('Cierre automático', () => {
     si.step(T);
     si.step(T, ['drs']);
     expect(si.state.car.drs).toBe(2);
+  });
+});
+
+describe('Habilitación por detección (carrera)', () => {
+  it('stepDrs con enabled=false: en zona sigue en 0 y la orden no abre', () => {
+    const si = sim(straightWithZone(500, 3000), 1000, ms(250));
+    si.drsEnabled = false;
+    const ev = si.step(T, ['drs']);
+    expect(si.state.car.drs).toBe(0);
+    expect(drsEvents(ev)).toEqual([]);
+  });
+
+  // Óvalo con zona DRS que cruza la meta; dos coches a la misma velocidad separados `gapS` segundos.
+  function raceDrs(gapS: number) {
+    const c = cfg();
+    const oval = makeOvalTrack({ halfWidthM: 8 });
+    oval.drsZones = [{ detect_s: 2460, start_s: 60, end_s: 450 }];
+    const rs = new RaceSession(oval, [0, 1].map((i) => ({ name: `C${i}`, team: 0, isAi: true })), c, 1);
+    rs.startLights();
+    while (rs.phase === 'lights') rs.step([], []);
+    const v = 40;
+    // El segundo coche regula su velocidad para fijar la diferencia en gapS
+    const v1 = () => { const g = rs.gapAheadOf(1); return g === null ? v : Math.min(50, Math.max(30, v + 4 * (g - gapS))); };
+    const inZone: { lap: number; gap: number | null; drs: number }[] = [];
+    let wasIn = false;
+    for (let i = 0; i < 300 / c.sim.dt; i++) {
+      const inputs = rs.entries.map((e, k) => laneInput(e.sim, 0, k ? v1() : v));
+      rs.step(inputs, []);
+      const car = rs.entries[1].sim.state.car;
+      const nowIn = car.s >= 100 && car.s < 400;
+      if (nowIn && !wasIn) inZone.push({ lap: rs.entries[1].sim.state.timing.lap, gap: rs.gapAheadOf(1), drs: car.drs });
+      wasIn = nowIn;
+      if (inZone.length >= 4) break;
+    }
+    return inZone;
+  }
+
+  it('a 0,8 s del de delante y desde la vuelta 2: disponible (1) en la zona; en la vuelta 1 no', () => {
+    const z = raceDrs(0.8);
+    expect(z.length).toBe(4);
+    expect(z[0]).toMatchObject({ lap: 1, drs: 0 });   // salida: sin paso por la detección
+    expect(z[1]).toMatchObject({ lap: 2, drs: 0 });   // detección en la vuelta 1
+    expect(z[2].lap).toBe(3);                         // detección en la vuelta 2
+    expect(z[2].gap!).toBeGreaterThan(0.6);
+    expect(z[2].gap!).toBeLessThan(1);
+    expect(z[2].drs).toBe(1);
+    expect(z[3].drs).toBe(1);
+  });
+
+  it('a 1,4 s del de delante: sigue en 0 dentro de la zona', () => {
+    const z = raceDrs(1.4);
+    expect(z.length).toBe(4);
+    expect(z[2].gap!).toBeGreaterThan(1.2);
+    expect(z.every((e) => e.drs === 0)).toBe(true);
+  });
+
+  it('práctica (1 coche): la zona siempre habilita el DRS', () => {
+    const oval = makeOvalTrack({ halfWidthM: 8 });
+    oval.drsZones = [{ detect_s: 2460, start_s: 60, end_s: 450 }];
+    const rs = new RaceSession(oval, [{ name: 'P', team: 0, isAi: false }], cfg(), 1);
+    rs.startLights();
+    while (rs.phase === 'lights') rs.step([], []);
+    let seen = false;
+    for (let i = 0; i < 30 / config.sim.dt && !seen; i++) {
+      rs.step([laneInput(rs.entries[0].sim, 0, 40)], []);
+      const car = rs.entries[0].sim.state.car;
+      if (car.s > 100 && car.s < 400) seen = car.drs === 1;
+    }
+    expect(seen).toBe(true);
   });
 });
