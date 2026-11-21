@@ -21,6 +21,7 @@ export class RaceSession {
   standings(): Standing[];                                            // ordenado por pos
 }
 ```
+- Cajones pintados: `mesh.ts` se corrige para que el cajón k quede centrado en la posición del coche k (`s = start − startOffsetM − k·gridSpacingM`, largo `gridBoxLenM`); hoy está desplazado y el coche no cae dentro (tarea 3.1).
 - `Simulation.placeOnGrid(slot)`: `s = startS − startOffsetM − slot·gridSpacingM`, `d = slot par ? +gridOffsetM : −gridOffsetM` (mismo lado que los cajones pintados; verificarlo contra `mesh.ts`).
 - Semáforo: 5 luces a 1 s; apagado tras `race.lightsHoldMinS..lightsHoldMaxS` (0,2–3,0 s) con `mulberry32(seed)`. Durante `grid`/`lights` la simulación de cada coche no avanza (igual que la cuenta atrás actual); en `green` todos avanzan. Sin salidas en falso.
 - Orden de paso: entradas de todos → `sim.step` de cada coche en orden de `id` → colisiones (D2) → clasificación.
@@ -44,6 +45,7 @@ export interface CarSnapshot { id: number; s: number; d: number; speed: number; 
 - Perfil de velocidad: `buildSpeedProfile` sobre la curvatura de la trazada `rl` (se recalcula k de la curva desplazada) con `latGripUse = skill.gripUse`, `brakeGripUse = skill.brakeUse`.
 - Dirección: persecución pura hacia el punto `s + lookahead` desplazado a `d = rl + offset`.
 - Tráfico: coche delante a < `ai.followM` (30 m) con solape lateral (|Δd| < 2,2 m): si la velocidad de cierre > `ai.overtakeCloseMs` (1,5) o tengo DRS, `offset` hacia el lado con más espacio en la próxima curva (interior), limitado a la pista − 1,2 m, a `ai.offsetRateMs` (1,5 m/s); si no hay hueco o en frenada, velocidad objetivo = min(perfil, velocidad del de delante − 1) para no alcanzarlo. Vuelve a `offset = 0` cuando está limpio.
+- Evitar alcances en tráfico mixto: además del seguimiento, si el coche de delante está a < `ai.brakeGapS` (0,6 s) con solape lateral y no hay hueco, la velocidad objetivo se limita a la suya y la frenada se anticipa usando su velocidad actual (no la del perfil); el desplazamiento lateral para adelantar solo se inicia si el hueco lateral está libre en los próximos `ai.followM`.
 - Salida: reacción `skill.reactionS` tras `lightsOut`.
 - DRS: abre al entrar en zona si está habilitado; ERS: `ers=true` en rectas si la carga > 0,3; adelantamiento (overtake) con probabilidad `aggression` cuando persigue a < 0,6 s.
 - Inconsistencia: cada vuelta, con `rng` sembrado, `gripUse` varía ±`(1 − consistency)·0,03`.
