@@ -67,15 +67,19 @@ Las ruedas SHALL girar según la velocidad, las delanteras SHALL virar según el
 - **THEN** el plano móvil del alerón trasero alcanza su posición abierta en menos de 0,3 s y vuelve al cerrarse
 
 ### Requirement: Superficies de pista creíbles
-El asfalto SHALL tener textura de grano y una banda más oscura de goma en la zona de paso, la hierba SHALL tener variación de tono, y los pianos, las líneas y los muros SHALL distinguirse con claridad. La parrilla SHALL mostrar cajones de salida y la línea de meta ajedrezada.
+El asfalto SHALL usar textura fotoescaneada con una banda más oscura de goma que sigue la trazada ideal, la hierba, la grava y el hormigón SHALL usar texturas fotoescaneadas, y los pianos, las líneas y las barreras SHALL distinguirse con claridad. La parrilla SHALL mostrar cajones de salida y la línea de meta ajedrezada.
 
 #### Scenario: Sin repetición evidente
 - **WHEN** se captura la recta principal desde la cámara de persecución
 - **THEN** no se aprecia un patrón de textura repetido a simple vista en los primeros 100 m
 
 #### Scenario: Superficies distinguibles
-- **WHEN** se captura una curva con piano
-- **THEN** asfalto, línea blanca, piano rojo y blanco, hierba y muro se distinguen por color y brillo
+- **WHEN** se captura una curva con piano y escapatoria de grava
+- **THEN** asfalto, línea blanca, piano rojo y blanco, grava, hierba y barrera se distinguen por color y brillo
+
+#### Scenario: Goma en la trazada
+- **WHEN** se captura desde arriba la salida de una curva
+- **THEN** la banda oscura cruza de exterior a interior siguiendo `rl`, no la línea central
 
 ### Requirement: Entorno
 El circuito SHALL estar rodeado de su entorno real (capability `track-world`) cuando exista `world.json`; si no existe, SHALL estar rodeado de gradas en la recta principal, vegetación repartida por el exterior y una silueta lejana. En ambos casos sin invadir la pista ni las escapatorias.

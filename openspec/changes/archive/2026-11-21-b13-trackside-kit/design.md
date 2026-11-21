@@ -57,6 +57,8 @@ En `roadChunk`, la banda oscura se centra en `rl[i]` en vez de en 0, ancho `rubb
 | Hormigón | `brushed_concrete` | 1k |
 | Cielo (HDRI) | `kloofendal_48d_partly_cloudy_puresky` | 2k `.hdr` |
 
+Los JPG se recomprimen al descargar con Pillow (Diffuse y Rough calidad 85, `nor_gl` calidad 92, sin cambiar la resolución) para que el total quede < 20 MB; el HDRI `.hdr` se guarda tal cual. El `sausage` se aplica por piano completo (el formato no tiene subtramos). Overrides de Interlagos: escapatoria de asfalto en el exterior del S do Senna; el resto, heurística (las fuentes públicas no detallan la superficie de cada escapatoria).
+
 `trackMaterials.ts` carga con `THREE.TextureLoader` (sRGB para Diffuse, lineal para normal y rugosidad), `RepeatWrapping`, anisotropía máxima ≤ 8, tamaño de mosaico `surfaces.uvMeters`. El color por vértice actual (variación, goma) se conserva multiplicando. Respaldo: si una textura falla, se usa la procedural de b6 sin error. Perfil `software` de calidad: texturas 1k y sin normal maps. El HDRI se carga con `RGBELoader` y sustituye la cúpula como `scene.environment` (PMREM) y como fondo; el sol direccional se orienta para coincidir con el sol del HDRI (`light.sunDir` ajustado en config). La niebla toma el color del horizonte del HDRI.
 
 ### D8. Constantes nuevas
