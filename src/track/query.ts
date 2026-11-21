@@ -54,14 +54,17 @@ function lerp(a: number, b: number, u: number): number {
   return a + (b - a) * u;
 }
 
+// Superficie de escapatoria por código de tabla (RUNOFF_CODE): 0 hierba, 1 asfalto, 2 grava (design D4)
+const RUNOFF_SURFACE: readonly Surface[] = ['grass', 'runoff', 'gravel'];
+
 function classify(t: Track, i: number, d: number, wl: number, wr: number): { surface: Surface; kerbSide: TrackSide | null } {
   if (d >= -wr && d <= wl) return { surface: 'asphalt', kerbSide: null };
   if (d > wl) {
     if (d <= wl + KERB_WIDTH_M && t.kerbL[i]) return { surface: 'kerb', kerbSide: 'left' };
-    return { surface: 'grass', kerbSide: null };
+    return { surface: RUNOFF_SURFACE[t.runoffL[i]] ?? 'grass', kerbSide: null };
   }
   if (d >= -(wr + KERB_WIDTH_M) && t.kerbR[i]) return { surface: 'kerb', kerbSide: 'right' };
-  return { surface: 'grass', kerbSide: null };
+  return { surface: RUNOFF_SURFACE[t.runoffR[i]] ?? 'grass', kerbSide: null };
 }
 
 // Proyecta (x, z) sobre el segmento contiguo a la muestra más cercana i e interpola.

@@ -13,12 +13,13 @@ const meshes: THREE.Mesh[] = [];
 m.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
 const byName = (n: string) => meshes.find((x) => x.name === n)!;
 const pos = (n: string) => byName(n).geometry.getAttribute('position');
-// Solo los anillos compartidos están al inicio del buffer: 6 vértices en road, 4 en grass/wall
-const RING = { road: 6, grass: 4, wall: 4 } as const;
+// Solo los anillos compartidos están al inicio del buffer: 6 vértices en road
+// (b13: la escapatoria va en mallas por material y el muro lo sustituyen las barreras de trackside)
+const RING = { road: 6 } as const;
 
 describe('Mallas de pista continuas', () => {
   it('el último anillo de cada trozo coincide con el primero del siguiente (incluido el cierre)', () => {
-    for (const kind of ['road', 'grass', 'wall'] as const) {
+    for (const kind of ['road'] as const) {
       const V = RING[kind];
       for (let c = 0; c < m.chunks; c++) {
         const cur = pos(`${kind}-${c}`);
@@ -45,11 +46,13 @@ describe('Mallas de pista continuas', () => {
   it('sin NaN y normales de asfalto con Y > 0,9', () => {
     for (const mesh of meshes) {
       const arr = mesh.geometry.getAttribute('position').array as Float32Array;
-      for (let i = 0; i < arr.length; i++) expect(Number.isNaN(arr[i])).toBe(false);
+      expect(arr.some(Number.isNaN), mesh.name).toBe(false);
     }
     for (const mesh of meshes.filter((x) => x.name.startsWith('road-'))) {
       const nor = mesh.geometry.getAttribute('normal');
-      for (let i = 0; i < nor.count; i++) expect(nor.getY(i)).toBeGreaterThan(0.9);
+      let minY = Infinity;
+      for (let i = 0; i < nor.count; i++) minY = Math.min(minY, nor.getY(i));
+      expect(minY, mesh.name).toBeGreaterThan(0.9);
     }
   });
 

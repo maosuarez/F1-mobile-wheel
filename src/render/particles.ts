@@ -8,17 +8,17 @@ import type { CarState } from '../sim/types';
 export type EmitCar = Pick<CarState, 'surface' | 'speed' | 'slip'>;
 export interface ParticlePose { x: number; y: number; z: number; yaw: number }
 
-// Emisor lógico puro: qué tipos emite el coche en este estado
+// Emisor lógico puro: qué tipos emite el coche en este estado. En grava, dirt es polvo de grava (b13, design D4)
 export function shouldEmit(car: EmitCar, cfg: GameConfig = config): { dirt: boolean; smoke: boolean } {
   const P = cfg.particles;
   return {
-    dirt: car.surface === 'grass' && car.speed > P.dirtMinMs,
+    dirt: (car.surface === 'grass' || car.surface === 'gravel') && car.speed > P.dirtMinMs,
     smoke: car.slip > P.smokeSlip && car.speed > P.smokeMinMs,
   };
 }
 
 const DEAD = -1e6;
-const TYPE_DIRT = 0, TYPE_SMOKE = 1;
+const TYPE_DIRT = 0, TYPE_SMOKE = 1, TYPE_GRAVEL = 2;   // grava: misma física que la tierra, otro color
 
 const vertexShader = /* glsl */ `
   attribute vec3 aStart;
@@ -33,7 +33,8 @@ const vertexShader = /* glsl */ `
   varying float vType;
   varying float vFade;
   void main() {
-    float life = aType < 0.5 ? uLife.x : uLife.y;
+    bool dirtLike = abs(aType - 1.0) > 0.5;
+    float life = dirtLike ? uLife.x : uLife.y;
     float age = uTime - aBirth;
     if (age < 0.0 || age >= life) {
       gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -46,7 +47,7 @@ const vertexShader = /* glsl */ `
     // Tierra: balística con gravedad; humo: sube a velocidad constante y crece
     vec3 p = aStart + aVel * age;
     float size = uSize.x;
-    if (aType < 0.5) {
+    if (dirtLike) {
       p.y += -4.9 * age * age;
       p.y = max(p.y, aStart.y - 0.1);
     } else {
@@ -55,13 +56,14 @@ const vertexShader = /* glsl */ `
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
     gl_PointSize = clamp(size * uPxPerM / max(-mv.z, 0.1), 0.0, 256.0);
-    vFade = aType < 0.5 ? 1.0 - k * k : (1.0 - k) * smoothstep(0.0, 0.15, k);
+    vFade = dirtLike ? 1.0 - k * k : (1.0 - k) * smoothstep(0.0, 0.15, k);
     vType = aType;
   }
 `;
 
 const fragmentShader = /* glsl */ `
   uniform vec3 uDirtColor;
+  uniform vec3 uGravelColor;
   uniform vec3 uSmokeColor;
   uniform vec2 uAlpha;
   varying float vType;
@@ -70,10 +72,10 @@ const fragmentShader = /* glsl */ `
     vec2 c = gl_PointCoord - 0.5;
     float r = length(c) * 2.0;
     if (r > 1.0 || vFade <= 0.0) discard;
-    bool dirt = vType < 0.5;
+    bool dirt = abs(vType - 1.0) > 0.5;
     float soft = dirt ? 1.0 - smoothstep(0.6, 1.0, r) : 1.0 - smoothstep(0.0, 1.0, r);
     float a = (dirt ? uAlpha.x : uAlpha.y) * soft * vFade;
-    gl_FragColor = vec4(dirt ? uDirtColor : uSmokeColor, a);
+    gl_FragColor = vec4(dirt ? (vType > 1.5 ? uGravelColor : uDirtColor) : uSmokeColor, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -122,6 +124,7 @@ export class TrackParticles {
         uGrowth: { value: P.smokeGrowth },
         uPxPerM: { value: 800 },
         uDirtColor: { value: new THREE.Color(P.dirtColor) },
+        uGravelColor: { value: new THREE.Color(P.gravelColor) },
         uSmokeColor: { value: new THREE.Color(P.smokeColor) },
         uAlpha: { value: new THREE.Vector2(P.dirtAlpha, P.smokeAlpha) },
       },
@@ -176,7 +179,8 @@ export class TrackParticles {
     const e = shouldEmit(car, this.cfg);
     if (e.dirt) {
       this.accDirt += P.dirtRatePerWheel * Math.min(1, car.speed / P.dirtRefMs) * dt;
-      while (this.accDirt >= 1) { this.accDirt -= 1; for (let w = 0; w < 4; w++) this.emit(TYPE_DIRT, w, car, pose, tS, dt); }
+      const type = car.surface === 'gravel' ? TYPE_GRAVEL : TYPE_DIRT;
+      while (this.accDirt >= 1) { this.accDirt -= 1; for (let w = 0; w < 4; w++) this.emit(type, w, car, pose, tS, dt); }
     } else this.accDirt = 0;
     if (e.smoke) {
       this.accSmoke += P.smokeRatePerWheel * car.slip * dt;
@@ -191,7 +195,7 @@ export class TrackParticles {
     const c = Math.cos(pose.yaw), s = Math.sin(pose.yaw);
     const [lx, lz] = this.wheels[wheel];
     // Rotación Y por yaw: x' = x cos + z sin; z' = −x sin + z cos. Adelante = (cos, 0, −sin)
-    const dirt = type === TYPE_DIRT;
+    const dirt = type !== TYPE_SMOKE;
     const back = dirt ? -0.3 : -0.1;                        // nace en el borde trasero de la rueda
     const wx = pose.x + c * (lx + back) + s * lz, wz = pose.z - s * (lx + back) + c * lz;
     const spread = dirt ? P.dirtSpreadMs : P.smokeSpreadMs;
@@ -223,7 +227,7 @@ export class TrackParticles {
     for (let i = 0; i < this.capacity; i++) {
       const age = t - this.birth[i];
       if (age < 0) continue;
-      if (this.type[i] === TYPE_DIRT) { if (age < P.dirtLifeS) dirt++; } else if (age < P.smokeLifeS) smoke++;
+      if (this.type[i] !== TYPE_SMOKE) { if (age < P.dirtLifeS) dirt++; } else if (age < P.smokeLifeS) smoke++;
     }
     return { active: dirt + smoke, dirt, smoke };
   }
@@ -232,7 +236,7 @@ export class TrackParticles {
   alive(): { x: number; y: number; z: number; type: 'dirt' | 'smoke'; birth: number }[] {
     const t = this.material.uniforms.uTime.value as number, P = this.cfg.particles, out = [];
     for (let i = 0; i < this.capacity; i++) {
-      const age = t - this.birth[i], dirt = this.type[i] === TYPE_DIRT;
+      const age = t - this.birth[i], dirt = this.type[i] !== TYPE_SMOKE;
       if (age >= 0 && age < (dirt ? P.dirtLifeS : P.smokeLifeS)) {
         out.push({ x: this.start[i * 3], y: this.start[i * 3 + 1], z: this.start[i * 3 + 2], type: dirt ? 'dirt' as const : 'smoke' as const, birth: this.birth[i] });
       }

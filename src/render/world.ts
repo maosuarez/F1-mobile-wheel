@@ -17,7 +17,7 @@ const WATER_LIFT_M = 0.1;     // agua sobre el terreno, sin z-fighting
 const PITLANE_LIFT_M = 0.02;  // calle de boxes sobre la hierba de la pista
 const STEEP_COLOR = new THREE.Color('#b8a07a');   // tierra en taludes (multiplica la textura de hierba)
 const CROWD_TEXEL_M = 0.5;    // tamaño de un "espectador" en la textura de público
-const ASPHALT = new THREE.Color('#2b2b2e');       // mismo tono que el asfalto de la pista
+const ASPHALT = new THREE.Color('#ffffff');       // el tono lo da el material de escapatoria de asfalto (b13)
 
 // Distancia por fuera del muro (negativa dentro de la zona de carrera)
 function beyondWall(track: Track, x: number, z: number): number {

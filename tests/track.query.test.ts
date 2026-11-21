@@ -68,12 +68,16 @@ describe('Localización en coordenadas de pista', () => {
 
 describe('Clasificación de superficie', () => {
   // Muestra dentro de un piano izquierdo y otra sin piano derecho
+  // (en el centro de un piano izquierdo sin escapatoria declarada: hierba por defecto)
   const iKerbL = (() => {
-    const kb = t.kerbs.find((k) => k.side === 'left')!;
-    return Math.round((kb.s0 + kb.s1) / 2 / t.step);
+    for (const kb of t.kerbs.filter((k) => k.side === 'left' && k.s0 < k.s1)) {
+      const i = Math.round((kb.s0 + kb.s1) / 2 / t.step);
+      if (t.kerbL[i] && t.runoffL[i] === 0) return i;
+    }
+    throw new Error('sin piano izquierdo con escapatoria de hierba');
   })();
   const iNoKerbR = (() => {
-    for (let i = 10; i < t.n; i++) if (!t.kerbR[i] && !t.kerbR[i - 1] && !t.kerbR[i + 1]) return i;
+    for (let i = 10; i < t.n; i++) if (!t.kerbR[i] && !t.kerbR[i - 1] && !t.kerbR[i + 1] && t.runoffR[i] === 0) return i;
     throw new Error('sin muestra libre de piano derecho');
   })();
 
@@ -106,6 +110,25 @@ describe('Clasificación de superficie', () => {
     const p = pointAt(iNoKerbR, -(t.wr[iNoKerbR] + 0.6));
     const loc = locate(t, p.x, p.z, iNoKerbR);
     expect(loc.surface).toBe('grass');
+  });
+
+  // Muestra con tramo de escapatoria del tipo pedido en ese lado, sin piano (b13, design D4)
+  const iRunoff = (side: 'left' | 'right', code: number) => {
+    const tab = side === 'left' ? t.runoffL : t.runoffR;
+    for (let i = 1; i < t.n - 1; i++) if (tab[i - 1] === code && tab[i] === code && tab[i + 1] === code) return i;
+    throw new Error(`sin escapatoria ${code} a la ${side}`);
+  };
+
+  it('grava', () => {
+    const i = iRunoff('left', 2);
+    const p = pointAt(i, t.wl[i] + 3);
+    expect(locate(t, p.x, p.z, i).surface).toBe('gravel');
+  });
+
+  it('escapatoria de asfalto', () => {
+    const i = iRunoff('right', 1);
+    const p = pointAt(i, -(t.wr[i] + 3));
+    expect(locate(t, p.x, p.z, i).surface).toBe('runoff');
   });
 
   it('distancia al muro = borde + runoff', () => {

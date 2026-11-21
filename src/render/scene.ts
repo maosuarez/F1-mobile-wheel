@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { Track } from '../track/types';
 import { config } from '../shared/config';
 import { buildTrackMeshes, type TrackMeshes } from '../track/mesh';
-import { createTrackMaterials } from './trackMaterials';
+import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { assetUrl, createTrackMaterials, type AssetManifest } from './trackMaterials';
+import { buildTrackside, createTracksideMaterials } from './trackside';
 import { QUALITY, type QualitySettings } from './quality';
 import { buildEnvironment as buildScenery, disposeEnvironment } from './environment';
 import { createSkyDome, createSkyMaterial } from './sky';
@@ -18,6 +20,8 @@ export interface GameScene {
   track: Track;
   env: THREE.Group;
   world: World | null;   // entorno real (b12); null → entorno procedural
+  trackside: THREE.Group;    // kit de borde de pista (b13)
+  hdri: THREE.DataTexture | null;   // cielo HDRI cargado (b13); null → cúpula procedural
 }
 
 // DPR limitado a config.render.maxDpr; ACES + sRGB y mapa de sombras PCF (design D2)
@@ -38,7 +42,8 @@ export function createRenderer(canvas: HTMLCanvasElement, preserveDrawingBuffer 
 // Cielo con degradado, niebla del color del horizonte, sol con sombra, relleno hemisférico, mallas de pista y cámara
 // Entorno real si hay world.json (sin gradas ni silueta procedurales); si no, el procedural de b6
 function buildEnv(track: Track, world: World | null, meshes: TrackMeshes, settings: Pick<QualitySettings, 'trees'>): THREE.Group {
-  return world ? buildWorld(world, track, meshes.materials, settings) : buildScenery(track, settings);
+  // Calle de boxes con el material de escapatoria de asfalto (asphalt_pit_lane, b13 design D7)
+  return world ? buildWorld(world, track, { grass: meshes.materials.grass, road: meshes.materials.runoff }, settings) : buildScenery(track, settings);
 }
 
 export function createScene(track: Track, settings: Pick<QualitySettings, 'trees' | 'trackMaps'> = QUALITY.high, world: World | null = null): GameScene {
@@ -73,11 +78,84 @@ export function createScene(track: Track, settings: Pick<QualitySettings, 'trees
   const ground = meshes.group.getObjectByName('ground');
   if (ground && world) ground.visible = false;
 
+  // Borde de pista: pianos con perfil, barreras en el muro de la simulación, valla, carteles, comisarios (b13)
+  const trackside = buildTrackside(track, createTracksideMaterials(meshes.materials), settings, world);
+  scene.add(trackside);
+
   const env = buildEnv(track, world, meshes, settings);
   scene.add(env);
 
   const camera = new THREE.PerspectiveCamera(config.render.fovDeg, 1, config.render.near, config.render.far);
-  return { scene, camera, meshes, sun, sky, track, env, world };
+  return { scene, camera, meshes, sun, sky, track, env, world, trackside, hdri: null };
+}
+
+// --- Cielo HDRI (b13, design D7) ---
+
+// Color lineal medio de la banda del horizonte (±2 % de alto alrededor de v = 0,5) de un equirectangular HDR
+export function hdriHorizonColor(tex: THREE.DataTexture): THREE.Color {
+  const { data, width, height } = tex.image as { data: ArrayLike<number>; width: number; height: number };
+  const half = tex.type === THREE.HalfFloatType;
+  const val = (i: number) => (half ? THREE.DataUtils.fromHalfFloat(data[i]) : data[i]);
+  const ch = data.length / (width * height);
+  const band = Math.max(1, Math.round(height * 0.02)), y0 = Math.floor(height / 2) - band;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let y = y0; y < y0 + 2 * band; y++) {
+    for (let x = 0; x < width; x += 4) {
+      const i = (y * width + x) * ch;
+      r += val(i); g += val(i + 1); b += val(i + 2); n++;
+    }
+  }
+  return new THREE.Color().setRGB(r / n, g / n, b / n, THREE.LinearSRGBColorSpace);
+}
+
+// Copia reducida (factor 4) del HDRI con la radiancia recortada a sky.hdriEnvClamp: el sol ya lo aporta la luz
+// direccional, así el entorno PMREM no duplica su brillo ni su reflejo
+function clampedHdri(tex: THREE.DataTexture): THREE.DataTexture {
+  const { data, width, height } = tex.image as { data: ArrayLike<number>; width: number; height: number };
+  const half = tex.type === THREE.HalfFloatType;
+  const val = (i: number) => (half ? THREE.DataUtils.fromHalfFloat(data[i]) : data[i]);
+  const ch = data.length / (width * height), F = 4, w = Math.floor(width / F), h = Math.floor(height / F);
+  const out = new Uint16Array(w * h * 4), max = config.sky.hdriEnvClamp;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    for (let c = 0; c < 3; c++) {
+      let sum = 0;
+      for (let dy = 0; dy < F; dy++) for (let dx = 0; dx < F; dx++) sum += Math.min(val(((y * F + dy) * width + x * F + dx) * ch + c), max);
+      out[(y * w + x) * 4 + c] = THREE.DataUtils.toHalfFloat(sum / (F * F));
+    }
+    out[(y * w + x) * 4 + 3] = THREE.DataUtils.toHalfFloat(1);
+  }
+  const t = new THREE.DataTexture(out, w, h, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  t.colorSpace = THREE.LinearSRGBColorSpace;
+  t.minFilter = t.magFilter = THREE.LinearFilter;
+  t.flipY = tex.flipY;
+  t.needsUpdate = true;
+  return t;
+}
+
+export interface HdriLoaderLike { loadAsync(url: string): Promise<THREE.DataTexture> }
+
+// Carga el HDRI del manifiesto como fondo y fuente del entorno; la niebla toma el color del horizonte.
+// Si falla, se mantiene la cúpula procedural y solo se avisa. Devuelve true si se aplicó.
+export async function loadHdriSky(gs: GameScene, manifest: AssetManifest | null, loader: HdriLoaderLike = new HDRLoader()): Promise<boolean> {
+  const url = assetUrl(manifest, config.assets.hdriId, 'hdri');
+  try {
+    if (!url) throw new Error('sin HDRI en el manifiesto');
+    const tex = await loader.loadAsync(url);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    gs.hdri = tex;
+    gs.scene.background = tex;
+    gs.scene.backgroundIntensity = config.sky.hdriBackgroundIntensity;
+    gs.sky.visible = false;
+    if (gs.scene.fog) gs.scene.fog.color.copy(hdriHorizonColor(tex)).multiplyScalar(config.sky.hdriBackgroundIntensity);
+    // El entorno se reconstruye desde el HDRI en el siguiente applyQuality
+    (gs.scene.environment?.userData.rt as THREE.WebGLRenderTarget | undefined)?.dispose();
+    gs.scene.environment = null;
+    return true;
+  } catch (e) {
+    console.warn('[assets] HDRI no disponible, se mantiene el cielo procedural', e);
+    return false;
+  }
 }
 
 // Ejes x/y de la cámara de sombra (lookAt con up = +Y), constantes porque el sol no se mueve
@@ -107,8 +185,16 @@ export function updateScene(gs: GameScene, x: number, y: number, z: number, yaw:
   gs.sky.position.copy(gs.camera.position);
 }
 
-// Entorno de reflexión: PMREM de una escena auxiliar con solo la cúpula
+// Entorno de reflexión: PMREM del HDRI recortado si está cargado; si no, de una escena auxiliar con solo la cúpula
 function buildEnvironment(renderer: THREE.WebGLRenderer, gs: GameScene, size: number): THREE.WebGLRenderTarget {
+  if (gs.hdri) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const src = clampedHdri(gs.hdri);
+    const rt = pmrem.fromEquirectangular(src);
+    pmrem.dispose();
+    src.dispose();
+    return rt;
+  }
   const aux = new THREE.Scene();
   const dome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), gs.sky.material);
   aux.add(dome);

@@ -30,7 +30,7 @@ export class FxPlanner {
     const moving = car.speed * 3.6 > this.f.minSpeedKmh;
     const active: Record<Continuous, boolean> = {
       kerb: moving && car.surface === 'kerb',
-      grass: moving && car.surface === 'grass',
+      grass: moving && (car.surface === 'grass' || car.surface === 'gravel'),   // grava = hierba (b13 D4); runoff = asfalto
       limiter: moving && car.limiter,
     };
     for (const k of CONTINUOUS) {

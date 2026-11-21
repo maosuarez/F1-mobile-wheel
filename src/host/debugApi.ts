@@ -15,6 +15,9 @@ export interface DebugSnapshot {
   // Render y calidad (b6, design D8)
   quality: string; rendererName: string; shadowLights: number; shadowMapSize: number; post: boolean;
   particlesActive: number; fpsAvg: number; fpsP5: number; carDrawCalls: number; carTriangles: number; envDrawCalls: number;
+  // Borde de pista y assets CC0 (b13); hdri null mientras carga
+  tracksideDrawCalls: number; tracksideTriangles: number;
+  assets: { textures: string[]; failed: string[]; hdri: boolean | null };
 }
 
 // Expone window.__f1 (solo lectura) únicamente con ?debug=1

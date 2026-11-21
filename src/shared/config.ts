@@ -20,29 +20,39 @@ export const config = {
   aero:  { cdA: 1.5, clA: 4.0 },
   surface: { asphalt: { mu: 1.0, rolling: 1 }, kerb: { mu: 0.85, rolling: 1, yawNoise: 0.02 },
              grass: { mu: 0.45, rolling: 6 },
+             // b13 design D4: grava y escapatoria de asfalto
+             gravel: { mu: 0.4, rolling: 14 }, runoff: { mu: 0.95, rolling: 1 },
              wall: { restitution: 0.3, speedLoss: 0.15, yawKickRad: 0.12 } },
   timing: { traceStepM: 10 },
+  // Kit de borde de pista (b13, design D8). Medidas en metros. Marcas de frenada: desde el punto de frenada que anuncia
+  // el cartel de 100 m (s + 100), brakeMarkLenM de largo, oscureciendo brakeMarkDarken las rodadas de la trazada
+  trackside: { kerbStripeM: 2, serratedToothM: 1, serratedH: 0.05, sausageH: 0.15, sausageW: 0.3, tecproH: 1.2, armcoH: 0.75,
+               concreteH: 1.0, fenceH: 2.5, marshalEveryM: 250, boardW: 1.2, boardH: 0.9, brakeMarkLenM: 60, brakeMarkDarken: 0.3 },
+  // Assets CC0 (b13, design D7)
+  assets: { base: '/assets/', anisotropy: 8, hdriId: 'kloofendal_48d_partly_cloudy_puresky' },
   keyboard: { steerRiseS: 0.18, steerFallS: 0.12, pedalRiseS: 0.08, pedalFallS: 0.05 },
   autopilot: { lookaheadBaseM: 8, lookaheadPerMs: 0.35, latGripUse: 0.72, brakeGripUse: 0.65,
                speedPreviewS: 0.25, throttleGain: 0.25, brakeGain: 0.35, maxSpeedMs: 95 },
   render: { maxDpr: 1.5, trackChunks: 20, fovDeg: 70, near: 0.3, far: 2500 },
   // Calidad adaptativa (b6, design D1): baja un nivel si la media de fps < downFps durante windowS
   quality: { downFps: 50, windowS: 3, meterFrames: 7200, softwareGl: ['SwiftShader', 'llvmpipe'] },
-  // Luz y cielo (b6, design D2). sunDir apunta hacia el sol; colores en sRGB
-  light: { exposure: 1.0, sunDir: [-0.45, 0.72, 0.38] as [number, number, number], sunColor: '#fff1dc', sunIntensity: 2.6,
-           hemiSky: '#bcd6f2', hemiGround: '#5a5440', hemiIntensity: 0.45, envIntensity: 0.55,
+  // Luz y cielo (b6, design D2). sunDir apunta hacia el sol (b13: alineado con el sol del HDRI); colores en sRGB
+  light: { exposure: 1.0, sunDir: [0.554, 0.742, 0.378] as [number, number, number], sunColor: '#fff1dc', sunIntensity: 2.6,
+           hemiSky: '#bcd6f2', hemiGround: '#5a5440', hemiIntensity: 0.45, envIntensity: 0.55, carEnvIntensity: 0.4,
            shadowExtentM: 60, shadowAheadM: 15, shadowDistM: 150, shadowNear: 1, shadowFar: 320,
            shadowBias: -0.0004, shadowNormalBias: 0.03 },
   sky:   { radiusM: 2000, zenith: '#3f78c4', horizon: '#c9dcec', ground: '#9fb3c2', exponent: 0.55,
            haloColor: '#fff4dd', haloPower: 180, haloGain: 1.6, glowPower: 6, glowGain: 0.25,
-           fogNearFrac: 0.3, fogFarFrac: 0.95 },
+           fogNearFrac: 0.3, fogFarFrac: 0.95,
+           // HDRI (b13, design D7): intensidad del fondo y radiancia máxima del entorno PMREM (sin el disco solar)
+           hdriBackgroundIntensity: 1.0, hdriEnvClamp: 8 },
   // Coche visual (b6, design D3). Medidas en metros, ángulos en grados, colores sRGB de la escudería ficticia
   carVisual: { wheelRadiusM: 0.36, tireFrontW: 0.305, tireRearW: 0.405, halfTrackM: 1.0,
                steerWheelDeg: 120, flapOpenDeg: 35, flapRateDegS: 300,
                tiltMaxDeg: 1.5, tiltDegPerG: 0.4, tiltTauS: 0.12,
                colors: { primary: '#0b5d7a', accent: '#ffb000', carbon: '#16181c', number: '#f4f4f0', rim: '#b9bec6', screen: '#38e8ff' } },
   // Superficies de pista (b6, design D4). Texturas procedurales sembradas; tamaños en px, medidas en metros
-  surfaces: { seed: 1301, texPx: 512, maxTexPx: 1024, uvMeters: 4, rubberWidthM: 3, rubberDarken: 0.15,
+  surfaces: { seed: 1301, texPx: 512, maxTexPx: 1024, uvMeters: 4, grassTint: '#4a7a2c', rubberWidthM: 2.2, rubberDarken: 0.15, rubberDarkenMax: 0.22, rubberKRef: 0.03,
               asphaltGrain: 0.14, grassVariation: 0.22, stripeLenM: 18, stripeDarken: 0.09,
               gridSlots: 10, gridSpacingM: 8, gridOffsetM: 2.4, gridBoxLenM: 5, gridBoxWidthM: 1.6, gridLineM: 0.12 },
   // Entorno (b6, design D5). Medidas en metros, colores sRGB; la semilla fija la colocación de árboles
@@ -61,7 +71,7 @@ export const config = {
                dirtRatePerWheel: 40, dirtRefMs: 28, smokeRatePerWheel: 30,
                dirtLifeS: 0.6, smokeLifeS: 1.4, dirtSizeM: 0.12, smokeSizeM: 0.9, smokeGrowth: 2.5,
                dirtUpMs: 2.5, dirtBackFrac: 0.15, dirtSpreadMs: 1.5, smokeUpMs: 0.6, smokeSpreadMs: 0.8, smokeBackFrac: 0.05,
-               dirtColor: '#5b4a33', smokeColor: '#d8d8d4', dirtAlpha: 0.9, smokeAlpha: 0.35, seed: 9173 },
+               dirtColor: '#5b4a33', gravelColor: '#9a8c74', smokeColor: '#d8d8d4', dirtAlpha: 0.9, smokeAlpha: 0.35, seed: 9173 },
   // Posproceso (b6, design D7): bloom a media resolución y viñeta en la pasada final
   post: { bloomStrength: 0.35, bloomRadius: 0.4, bloomThreshold: 0.9,
           vignetteStrength: 0.3, vignetteInner: 0.45, vignetteOuter: 1.05 },

@@ -51,7 +51,8 @@ export function fovFor(speedKmh: number, c: CameraCfg): number {
 export function shakeAmplitude(car: CarState, c: CameraCfg): number {
   const sh = c.shake;
   const kmh = car.speed * 3.6;
-  const surf = car.surface === 'kerb' ? sh.kerbM : car.surface === 'grass' ? sh.grassM : 0;
+  // Grava como hierba; la escapatoria de asfalto como asfalto (b13, design D4)
+  const surf = car.surface === 'kerb' ? sh.kerbM : car.surface === 'grass' || car.surface === 'gravel' ? sh.grassM : 0;
   let a = surf * clamp(kmh / sh.surfaceRefKmh, 0, 1);
   if (kmh > sh.highSpeedKmh) {
     a += sh.highSpeedM * clamp((kmh - sh.highSpeedKmh) / (sh.highSpeedRefKmh - sh.highSpeedKmh), 0, 1);

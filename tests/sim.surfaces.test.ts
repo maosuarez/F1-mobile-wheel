@@ -63,6 +63,35 @@ describe('Superficies', () => {
     expect(grass).toBeGreaterThanOrEqual(2 * asphalt);
   });
 
+  // Recta con escapatoria de grava a ambos lados (b13, design D4)
+  const gravelTrack = () => {
+    const t = makeStraightTrack({ lengthM: 3000, halfWidthM: 1, runoffM: 50 });
+    t.runoffL.fill(2); t.runoffR.fill(2);
+    return t;
+  };
+
+  it('la grava frena al menos 1,5 veces más que la hierba', () => {
+    const lost = (track: Track, surface: string) => {
+      const sim = new Simulation(track, cfg());
+      place(sim, 1000, 20, ms(100));
+      runFor(sim, 2, full());
+      expect(sim.state.car.surface).toBe(surface);
+      return ms(100) - sim.state.car.speed;
+    };
+    const grass = lost(makeStraightTrack({ lengthM: 3000, halfWidthM: 1, runoffM: 50 }), 'grass');
+    const gravel = lost(gravelTrack(), 'gravel');
+    expect(gravel).toBeGreaterThanOrEqual(1.5 * grass);
+  });
+
+  it('la grava no atrapa: parado y a fondo 4 s supera 20 km/h', () => {
+    const sim = new Simulation(gravelTrack(), cfg());
+    place(sim, 500, 20, 0);
+    const surfaces = new Set<string>();
+    runFor(sim, 4, full({ throttle: 1 }), (st) => surfaces.add(st.car.surface));
+    expect([...surfaces]).toEqual(['gravel']);
+    expect(sim.state.car.speed * 3.6).toBeGreaterThan(20);
+  });
+
   it('piano: 80–90 % del agarre lateral del asfalto a 100 km/h', () => {
     const kerbTrack = makeStraightTrack({ lengthM: 6000, halfWidthM: 6 });
     kerbTrack.kerbL.fill(1);

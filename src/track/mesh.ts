@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Track } from './types';
-import { KERB_WIDTH_M, KERB_HEIGHT_M, EDGE_LINE_M, WALL_HEIGHT_M } from './types';
+import { KERB_WIDTH_M, KERB_HEIGHT_M, EDGE_LINE_M } from './types';
 import { config } from '../shared/config';
-import { sampleAt } from './query';
+import { deltaS, sampleAt, wrapS } from './query';
 import { createTrackMaterials, type TrackMaterials } from '../render/trackMaterials';
 
 export interface TrackMeshes {
@@ -13,7 +13,7 @@ export interface TrackMeshes {
 }
 
 const LINE_LIFT_M = 0.005;      // franjas blancas 5 mm sobre el asfalto
-const GRASS_DROP_M = 0.05;      // hierba exterior 5 cm por debajo del asfalto
+export const GRASS_DROP_M = 0.05;      // hierba exterior 5 cm por debajo del asfalto
 const GRASS_INNER_DROP_M = 0.01;
 const RING_VERTS = 6;           // asfalto (2) + franjas (4)
 const KERB_VERTS = 4;           // kR_out, kR_in, kL_in, kL_out
@@ -21,13 +21,13 @@ const KERB_VERTS = 4;           // kR_out, kR_in, kL_in, kL_out
 const UVM = config.surfaces.uvMeters;   // metros por repetición de textura
 const C_ASPHALT = new THREE.Color('#2b2b2e');
 const C_LINE = new THREE.Color('#e8e8e8');
-const C_KERB_RED = new THREE.Color('#c8102e');
 const C_KERB_WHITE = new THREE.Color('#ffffff');
+const C_WHITE = new THREE.Color('#ffffff');
 
-interface Frame { x: number; y: number; z: number; nx: number; nz: number; tb: number; wl: number; wr: number; s: number; normal: [number, number, number] }
+export interface Frame { x: number; y: number; z: number; nx: number; nz: number; tb: number; wl: number; wr: number; s: number; normal: [number, number, number] }
 
 // Marco de la muestra i (con envoltura). `ringIndex === n` es el anillo 0 al cerrar el bucle.
-function frameAt(t: Track, ringIndex: number): Frame {
+export function frameAt(t: Track, ringIndex: number): Frame {
   const n = t.n;
   const i = ((ringIndex % n) + n) % n;
   const ip = (i + 1) % n, im = (i - 1 + n) % n;
@@ -48,7 +48,7 @@ function frameAt(t: Track, ringIndex: number): Frame {
 }
 
 // Punto de la sección a distancia lateral d (izquierda positiva) y altura h sobre el asfalto
-function pt(f: Frame, d: number, h: number): [number, number, number] {
+export function pt(f: Frame, d: number, h: number): [number, number, number] {
   return [f.x + f.nx * d, f.y + d * f.tb + h, f.z + f.nz * d];
 }
 
@@ -74,7 +74,7 @@ export function buildRingPositions(track: Track, i: number): Float32Array {
 }
 
 // Acumulador de geometría
-class Builder {
+export class Builder {
   pos: number[] = []; nor: number[] = []; col: number[] = []; uv: number[] = []; idx: number[] = [];
   get count() { return this.pos.length / 3; }
   vert(p: ArrayLike<number>, n: ArrayLike<number>, c: THREE.Color | null, u: number, v: number): number {
@@ -116,17 +116,24 @@ function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     const ds = [-f.wr, f.wl, -f.wr, -f.wr + EDGE_LINE_M, f.wl - EDGE_LINE_M, f.wl];
     for (let k = 0; k < RING_VERTS; k++) B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, cols[k], ds[k] / UVM, f.s / UVM);
   }
-  // Estaciones intermedias del asfalto para la banda de goma (gaussiana en d = 0); van tras los anillos compartidos
+  // Estaciones intermedias del asfalto para la banda de goma (gaussiana centrada en la trazada rl, design D6);
+  // van tras los anillos compartidos. Más oscura con curvatura alta y en las marcas de frenada (D5)
   const S = config.surfaces, sigma = S.rubberWidthM / 2;
-  const stations = [-S.rubberWidthM, -sigma, 0, sigma, S.rubberWidthM];
+  const offsets = [-S.rubberWidthM, -sigma, 0, sigma, S.rubberWidthM];
   const mid: number[][] = [];
   for (let r = a; r <= b; r++) {
-    const f = frames[r - a], row: number[] = [];
-    for (const d of stations) {
-      const dd = Math.min(Math.max(d, -f.wr), f.wl);
-      const c = C_ASPHALT.clone().multiplyScalar(1 - S.rubberDarken * Math.exp(-(dd * dd) / (2 * sigma * sigma)));
+    const f = frames[r - a], i = ((r % t.n) + t.n) % t.n, row: number[] = [];
+    const rl = t.rl[i];
+    const darken = S.rubberDarken + (S.rubberDarkenMax - S.rubberDarken) * Math.min(Math.abs(t.k[i]) / S.rubberKRef, 1);
+    const mark = brakeMarkAt(t, f.s);
+    offsets.forEach((o, k) => {
+      const dd = Math.min(Math.max(rl + o, -f.wr), f.wl);
+      const g = Math.exp(-((dd - rl) ** 2) / (2 * sigma * sigma));
+      // Rodadas de frenada: las estaciones ±σ (ruedas) de la trazada
+      const m = k === 1 || k === 3 ? mark * config.trackside.brakeMarkDarken : 0;
+      const c = C_ASPHALT.clone().multiplyScalar((1 - darken * g) * (1 - m));
       row.push(B.vert(pt(f, dd, 0), f.normal, c, dd / UVM, f.s / UVM));
-    }
+    });
     mid.push(row);
   }
   for (let r = 0; r < b - a; r++) {
@@ -137,68 +144,49 @@ function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     B.quad(o0 + 2, o0 + 3, o1 + 2, o1 + 3);   // franja derecha
     B.quad(o0 + 4, o0 + 5, o1 + 4, o1 + 5);   // franja izquierda
   }
-  // Pianos: vértices propios por segmento para bandas rojo/blanco nítidas
-  for (let r = a; r < b; r++) {
-    const i0 = ((r % t.n) + t.n) % t.n, i1 = ((r + 1) % t.n);
-    const band = Math.floor(i0 / 2) % 2 === 0 ? C_KERB_RED : C_KERB_WHITE;
-    const f0 = frames[r - a], f1 = frames[r - a + 1];
-    const p0 = buildRingPositions(t, r), p1 = buildRingPositions(t, r + 1);
-    const side = (flag0: number, flag1: number, ka: number, kb: number) => {
-      if (!flag0 || !flag1) return;
-      const v = (p: Float32Array, k: number, f: Frame, d: number) =>
-        B.vert(p.subarray(k * 3, k * 3 + 3), f.normal, band, d / UVM, f.s / UVM);
-      const dOf = (f: Frame, k: number) => (k === RING_VERTS ? -f.wr - KERB_WIDTH_M : k === RING_VERTS + 1 ? -f.wr : k === RING_VERTS + 2 ? f.wl : f.wl + KERB_WIDTH_M);
-      const a0 = v(p0, ka, f0, dOf(f0, ka)), b0 = v(p0, kb, f0, dOf(f0, kb)), a1 = v(p1, ka, f1, dOf(f1, ka)), b1 = v(p1, kb, f1, dOf(f1, kb));
-      B.quad(a0, b0, a1, b1);
-    };
-    side(t.kerbR[i0], t.kerbR[i1], RING_VERTS + 0, RING_VERTS + 1);   // kR_out (d menor) → kR_in
-    side(t.kerbL[i0], t.kerbL[i1], RING_VERTS + 2, RING_VERTS + 3);   // kL_in → kL_out
-  }
+  // Los pianos con perfil se dibujan en render/trackside.ts (b13, design D5)
   return B.build(true, true);
 }
 
-function grassChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
-  const B = new Builder();
-  const base: number[] = [];
-  for (let r = a; r <= b; r++) {
-    const f = frameAt(t, r);
-    base.push(B.count);
-    const n3 = f.normal;
-    // Franjas de siega alternas por s
-    const stripe = Math.floor(f.s / config.surfaces.stripeLenM) % 2 === 0 ? 1 + config.surfaces.stripeDarken : 1 - config.surfaces.stripeDarken;
-    const c = new THREE.Color(stripe, stripe, stripe);
-    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), n3, c, (-f.wr - t.runoff) / UVM, f.s / UVM);
-    B.vert(pt(f, -f.wr, -GRASS_INNER_DROP_M), n3, c, -f.wr / UVM, f.s / UVM);
-    B.vert(pt(f, f.wl, -GRASS_INNER_DROP_M), n3, c, f.wl / UVM, f.s / UVM);
-    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), n3, c, (f.wl + t.runoff) / UVM, f.s / UVM);
+// Intensidad (0–1) de las marcas de frenada en s: desde el punto de frenada (cartel de 100 m + 100 m)
+// durante brakeMarkLenM, con entrada y salida suaves de 10 m
+export function brakeMarkAt(t: Track, s: number): number {
+  const len = config.trackside.brakeMarkLenM, fade = 10;
+  let v = 0;
+  for (const bd of t.boards) {
+    if (bd.m !== 100) continue;
+    const u = deltaS(t, wrapS(t, bd.s + 100), s);
+    if (u < 0 || u > len) continue;
+    v = Math.max(v, Math.min(1, u / fade, (len - u) / fade));
   }
-  for (let r = 0; r < b - a; r++) {
-    const o0 = base[r], o1 = base[r + 1];
-    B.quad(o0, o0 + 1, o1, o1 + 1);
-    B.quad(o0 + 2, o0 + 3, o1 + 2, o1 + 3);
-  }
-  return B.build(true, false);
+  return v;
 }
 
-function wallChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
-  const B = new Builder();
-  const base: number[] = [];
-  const up: [number, number, number] = [0, 1, 0];
-  for (let r = a; r <= b; r++) {
-    const f = frameAt(t, r);
-    base.push(B.count);
-    B.vert(pt(f, -f.wr - t.runoff, -GRASS_DROP_M), up, null, 0, f.s / UVM);
-    B.vert(pt(f, -f.wr - t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / UVM);
-    B.vert(pt(f, f.wl + t.runoff, -GRASS_DROP_M), up, null, 0, f.s / UVM);
-    B.vert(pt(f, f.wl + t.runoff, WALL_HEIGHT_M), up, null, 1, f.s / UVM);
+// Escapatoria entre el borde del asfalto y la barrera, separada por material según runoffL/R (design D5):
+// 0 hierba, 1 asfalto, 2 grava. Una geometría por material para toda la pista (3 draw calls)
+export function buildRunoffGeometries(t: Track): THREE.BufferGeometry[] {
+  const B = [new Builder(), new Builder(), new Builder()];
+  const n = t.n;
+  const F: Frame[] = [];
+  for (let r = 0; r <= n; r++) F.push(frameAt(t, r));
+  for (let r = 0; r < n; r++) {
+    const i0 = r, f0 = F[r], f1 = F[r + 1];
+    // Franjas de siega alternas por s (solo se notan en la hierba)
+    const stripe = Math.floor(f0.s / config.surfaces.stripeLenM) % 2 === 0 ? 1 + config.surfaces.stripeDarken : 1 - config.surfaces.stripeDarken;
+    for (const side of [-1, 1] as const) {
+      const code = side > 0 ? t.runoffL[i0] : t.runoffR[i0];
+      const b = B[code] ?? B[0];
+      const c = code === 0 ? new THREE.Color(stripe, stripe, stripe) : C_WHITE;
+      const v = (f: Frame, outer: boolean) => {
+        const d = side > 0 ? f.wl + (outer ? t.runoff : 0) : -f.wr - (outer ? t.runoff : 0);
+        return b.vert(pt(f, d, outer ? -GRASS_DROP_M : -GRASS_INNER_DROP_M), f.normal, c, d / UVM, f.s / UVM);
+      };
+      // a = lado de d menor
+      const in0 = v(f0, false), out0 = v(f0, true), in1 = v(f1, false), out1 = v(f1, true);
+      if (side > 0) b.quad(in0, out0, in1, out1); else b.quad(out0, in0, out1, in1);
+    }
   }
-  for (let r = 0; r < b - a; r++) {
-    const o0 = base[r], o1 = base[r + 1];
-    // Muro izquierdo mira hacia dentro (+lateral hacia la pista); el derecho con el sentido opuesto
-    B.idx.push(o0 + 2, o1 + 2, o0 + 3, o0 + 3, o1 + 2, o1 + 3);
-    B.idx.push(o0 + 0, o0 + 1, o1 + 0, o0 + 1, o1 + 1, o1 + 0);
-  }
-  return B.build(false, false);
+  return B.map((b) => b.build(true, false));
 }
 
 // Línea de meta ajedrezada de 1 m, 2 filas
@@ -242,7 +230,7 @@ function startLine(t: Track, mat: THREE.Material): THREE.Mesh {
 }
 
 export function buildTrackMeshes(track: Track, materials: TrackMaterials = createTrackMaterials(), chunks: number = config.render.trackChunks): TrackMeshes {
-  const { road, grass, wall } = materials;
+  const { road, grass, gravel, runoff } = materials;
   const group = new THREE.Group();
   group.name = 'track';
   let triangles = 0;
@@ -258,8 +246,11 @@ export function buildTrackMeshes(track: Track, materials: TrackMaterials = creat
     const a = Math.floor((c * n) / chunks);
     const b = c === chunks - 1 ? n : Math.floor(((c + 1) * n) / chunks);   // el último incluye el anillo 0
     add(`road-${c}`, roadChunk(track, a, b), road);
-    add(`grass-${c}`, grassChunk(track, a, b), grass);
-    add(`wall-${c}`, wallChunk(track, a, b), wall);
+  }
+  // Escapatoria por material; el muro antiguo lo sustituyen las barreras de render/trackside.ts
+  const [rg, ra, rv] = buildRunoffGeometries(track);
+  for (const [name, g, m] of [['runoff-grass', rg, grass], ['runoff-asphalt', ra, runoff], ['runoff-gravel', rv, gravel]] as const) {
+    if (g.getAttribute('position').count > 0) add(name, g, m); else g.dispose();
   }
 
   // Suelo grande bajo la pista y línea de meta

@@ -4,11 +4,20 @@ export interface TrackSamplesJson {
   s: number[]; x: number[]; y: number[]; z: number[];
   wl: number[]; wr: number[]; nx: number[]; nz: number[];
   k: number[]; pitch: number[]; bank: number[];
+  rl?: number[];   // d de la trazada ideal (m, + izquierda), b13 design D1
 }
 
 export interface DrsZone { detect_s: number; start_s: number; end_s: number }
 export interface Corner { n: number; name: string; s: number }
-export interface Kerb { s0: number; s1: number; side: TrackSide }
+export type KerbType = 'flat' | 'serrated' | 'sausage';
+export interface Kerb { s0: number; s1: number; side: TrackSide; type?: KerbType }   // type por defecto 'flat'
+
+// Borde de pista por tramos (b13, design D1); s0 > s1 cruza la meta
+export type RunoffType = 'asphalt' | 'gravel' | 'grass';
+export type BarrierType = 'tecpro' | 'armco' | 'concrete';
+export interface RunoffSpan { s0: number; s1: number; side: TrackSide; type: RunoffType }
+export interface BarrierSpan { s0: number; s1: number; side: TrackSide; type: BarrierType }
+export interface Board { s: number; side: TrackSide; m: 150 | 100 | 50 }
 
 export interface TrackJson {
   id: string;
@@ -23,11 +32,14 @@ export interface TrackJson {
   corners: Corner[];
   kerbs: Kerb[];
   runoff_m: number;
+  runoffs?: RunoffSpan[];     // por defecto hierba
+  barriers?: BarrierSpan[];   // por defecto guardarraíl
+  boards?: Board[];
 }
 
 // --- Pista en memoria (design D3) ---
 
-export type Surface = 'asphalt' | 'kerb' | 'grass';
+export type Surface = 'asphalt' | 'kerb' | 'grass' | 'gravel' | 'runoff';   // runoff = escapatoria de asfalto
 
 // Constantes de geometría de pista (metros).
 export const KERB_WIDTH_M = 1.2, KERB_HEIGHT_M = 0.03, EDGE_LINE_M = 0.3, WALL_HEIGHT_M = 1.0;
@@ -38,8 +50,16 @@ export interface Track {
   nx: Float64Array; nz: Float64Array; tx: Float64Array; tz: Float64Array;   // tx,tz = (−nz, nx)
   k: Float64Array; pitch: Float64Array; bank: Float64Array;
   kerbL: Uint8Array; kerbR: Uint8Array;        // 1 si la muestra i tiene piano en ese lado (precalculado)
+  rl: Float64Array;                             // trazada ideal (0 si falta)
+  runoffL: Uint8Array; runoffR: Uint8Array;     // escapatoria por muestra: RUNOFF_CODE
+  barrierL: Uint8Array; barrierR: Uint8Array;   // barrera por muestra: BARRIER_CODE
   startS: number; sectorsS: [number, number]; drsZones: DrsZone[]; corners: Corner[]; kerbs: Kerb[]; runoff: number;
+  runoffs: RunoffSpan[]; barriers: BarrierSpan[]; boards: Board[];
 }
+
+// Códigos de las tablas por muestra (design D1)
+export const RUNOFF_CODE: Record<RunoffType, number> = { grass: 0, asphalt: 1, gravel: 2 };
+export const BARRIER_CODE: Record<BarrierType, number> = { armco: 0, tecpro: 1, concrete: 2 };
 
 export interface TrackLocation {
   i: number; s: number; d: number; y: number; pitch: number; bank: number; k: number;

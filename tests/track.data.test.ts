@@ -17,8 +17,8 @@ describe('interlagos.json', () => {
   it('columnas completas y homogéneas', () => {
     expect(N).toBeGreaterThanOrEqual(2000);
     for (const c of Object.keys(S) as (keyof typeof S)[]) {
-      expect(S[c].length).toBe(N);
-      expect(S[c].every(Number.isFinite)).toBe(true);
+      expect(S[c]!.length).toBe(N);
+      expect(S[c]!.every(Number.isFinite)).toBe(true);
     }
   });
   it('muestreo uniforme', () => {

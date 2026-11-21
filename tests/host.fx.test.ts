@@ -42,6 +42,11 @@ describe('FxPlanner (spec haptic-feedback)', () => {
     expect(run(p, car({ surface: 'asphalt' }), 60, 60 * FRAME_MS)).toEqual([]);
   });
 
+  it('Grava como hierba y escapatoria de asfalto como asfalto (b13)', () => {
+    expect(count(run(new FxPlanner(config.fx), car({ surface: 'gravel' }), 60), 'grass')).toBeGreaterThan(0);
+    expect(run(new FxPlanner(config.fx), car({ surface: 'runoff' }), 60)).toEqual([]);
+  });
+
   it('Parado en la hierba: ningún fx', () => {
     const p = new FxPlanner(config.fx);
     expect(run(p, car({ surface: 'grass', speed: 0 }), 120)).toEqual([]);

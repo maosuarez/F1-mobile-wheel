@@ -81,6 +81,11 @@ describe('Temblor de cámara', () => {
     expect(maxShake(k)).toBeGreaterThan(0);
   });
 
+  it('Grava como hierba y escapatoria de asfalto como asfalto (b13)', () => {
+    expect(shakeAmplitude(carAt(150, 'gravel'), c)).toBe(shakeAmplitude(carAt(150, 'grass'), c));
+    expect(shakeAmplitude(carAt(150, 'runoff'), c)).toBe(0);
+  });
+
   it('Parado sobre hierba: amplitud 0', () => {
     expect(shakeAmplitude(carAt(0, 'grass'), c)).toBe(0);
     expect(shakeAmplitude(carAt(50, 'grass'), c)).toBeCloseTo(c.shake.grassM / 2, 10);

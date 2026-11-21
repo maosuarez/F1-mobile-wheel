@@ -52,6 +52,17 @@ describe('Efectos de pista', () => {
     expect(p.debug().active).toBe(0);
   });
 
+  it('Polvo en la grava (b13)', () => {
+    const gravel: EmitCar = { surface: 'gravel', speed: 100 * KMH, slip: 0.1 };
+    expect(shouldEmit(gravel)).toEqual({ dirt: true, smoke: false });
+    expect(shouldEmit({ ...gravel, surface: 'runoff' })).toEqual({ dirt: false, smoke: false });
+    const p = new TrackParticles(400);
+    p.update(gravel, pose, 0);
+    run(p, gravel, 0, 0.3);
+    expect(p.debug().dirt).toBeGreaterThan(0);
+    expect(p.alive().every((a) => a.type === 'dirt')).toBe(true);
+  });
+
   it('Humo al deslizar', () => {
     const sliding: EmitCar = { surface: 'asphalt', speed: 70 * KMH, slip: 0.7 };
     expect(shouldEmit(sliding)).toEqual({ dirt: false, smoke: true });

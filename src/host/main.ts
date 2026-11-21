@@ -4,7 +4,8 @@ import { loadTrack } from '../track/load';
 import { loadWorld, terrainHeight } from '../track/world';
 import { Simulation } from '../sim/simulation';
 import { NEUTRAL_INPUT, type DriverInput } from '../sim/types';
-import { applyQuality, createRenderer, createScene, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
+import { applyQuality, createRenderer, createScene, loadHdriSky, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
+import { fetchAssetManifest, loadTrackTextures } from '../render/trackMaterials';
 import { AdaptiveQuality, FpsMeter, QUALITY, initialQuality, type QualityLevel, type QualitySettings } from '../render/quality';
 import { buildCar } from '../render/car';
 import { TrackParticles } from '../render/particles';
@@ -327,6 +328,17 @@ async function start(): Promise<void> {
   });
   applyAll();
 
+  // Assets CC0 (b13, design D7): texturas fotoescaneadas y cielo HDRI; lo que falle conserva el respaldo procedural
+  const assets = { textures: [] as string[], failed: [] as string[], hdri: null as boolean | null };
+  void fetchAssetManifest().then(async (manifest) => {
+    const anisotropy = Math.min(config.assets.anisotropy, renderer.capabilities.getMaxAnisotropy());
+    // Perfil software (trackMaps = false): texturas de 1k y sin normal maps
+    const opts = { normals: quality.trackMaps, anisotropy, maxPx: quality.trackMaps ? undefined : 1024 };
+    const [tex, sky] = await Promise.all([loadTrackTextures(gs.meshes.materials, opts, manifest), loadHdriSky(gs, manifest)]);
+    assets.textures = tex.loaded; assets.failed = tex.failed; assets.hdri = sky;
+    if (sky) applyAll();
+  });
+
   // Modo VR (b7): perfil fijo VR_QUALITY sin adaptativo ni posproceso; cámara hija del ancla (design D2/D3)
   const vrAnchor = new THREE.Object3D();
   let vrRig: CameraRig | null = null;
@@ -387,6 +399,8 @@ async function start(): Promise<void> {
         quality: adaptive.level, rendererName: gpuName, ...shadowStats(scene, renderer), post: quality.post,
         particlesActive: particles.debug().active, fpsAvg: fpsMeter.avg(), fpsP5: fpsMeter.p5(),
         carDrawCalls: carCost.drawCalls, carTriangles: carCost.triangles, envDrawCalls: objectCost(gs.env).drawCalls,
+        tracksideDrawCalls: objectCost(gs.trackside).drawCalls, tracksideTriangles: objectCost(gs.trackside).triangles,
+        assets: { textures: [...assets.textures], failed: [...assets.failed], hdri: assets.hdri },
       };
     }, canvas);
   }
