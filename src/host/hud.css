@@ -67,3 +67,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .open-wheel { position: fixed; z-index: 1000; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top)); display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 12px 20px; border-radius: 12px; background: #35e07a; color: #04210f; font: 700 18px/1.2 system-ui, sans-serif; letter-spacing: .02em; text-align: center; text-decoration: none; box-shadow: 0 4px 18px rgba(0,0,0,.55); }
 .open-wheel[hidden] { display: none; }
 .pairing-wheel-link { align-self: flex-start; font-size: 16px; color: #8f7bff; text-decoration: underline; padding: 8px 0; }
+/* Atribución de datos OSM (b12): línea pequeña y discreta */
+.attribution { font-size: 11px; font-weight: 400; opacity: .55; margin-top: 4px; }

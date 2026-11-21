@@ -6,6 +6,8 @@ import { createTrackMaterials } from './trackMaterials';
 import { QUALITY, type QualitySettings } from './quality';
 import { buildEnvironment as buildScenery, disposeEnvironment } from './environment';
 import { createSkyDome, createSkyMaterial } from './sky';
+import { buildWorld } from './world';
+import type { World } from '../track/world';
 
 export interface GameScene {
   scene: THREE.Scene;
@@ -15,6 +17,7 @@ export interface GameScene {
   sky: THREE.Mesh;
   track: Track;
   env: THREE.Group;
+  world: World | null;   // entorno real (b12); null → entorno procedural
 }
 
 // DPR limitado a config.render.maxDpr; ACES + sRGB y mapa de sombras PCF (design D2)
@@ -33,7 +36,12 @@ export function createRenderer(canvas: HTMLCanvasElement, preserveDrawingBuffer 
 }
 
 // Cielo con degradado, niebla del color del horizonte, sol con sombra, relleno hemisférico, mallas de pista y cámara
-export function createScene(track: Track, settings: Pick<QualitySettings, 'trees' | 'trackMaps'> = QUALITY.high): GameScene {
+// Entorno real si hay world.json (sin gradas ni silueta procedurales); si no, el procedural de b6
+function buildEnv(track: Track, world: World | null, meshes: TrackMeshes, settings: Pick<QualitySettings, 'trees'>): THREE.Group {
+  return world ? buildWorld(world, track, meshes.materials, settings) : buildScenery(track, settings);
+}
+
+export function createScene(track: Track, settings: Pick<QualitySettings, 'trees' | 'trackMaps'> = QUALITY.high, world: World | null = null): GameScene {
   const L = config.light, S = config.sky;
   const scene = new THREE.Scene();
   const sunDir = new THREE.Vector3(...L.sunDir).normalize();
@@ -61,11 +69,15 @@ export function createScene(track: Track, settings: Pick<QualitySettings, 'trees
   meshes.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.receiveShadow = true; });
   scene.add(meshes.group);
 
-  const env = buildScenery(track, settings);
+  // Con terreno real, el suelo plano bajo la pista asomaría en los valles
+  const ground = meshes.group.getObjectByName('ground');
+  if (ground && world) ground.visible = false;
+
+  const env = buildEnv(track, world, meshes, settings);
   scene.add(env);
 
   const camera = new THREE.PerspectiveCamera(config.render.fovDeg, 1, config.render.near, config.render.far);
-  return { scene, camera, meshes, sun, sky, track, env };
+  return { scene, camera, meshes, sun, sky, track, env, world };
 }
 
 // Ejes x/y de la cámara de sombra (lookAt con up = +Y), constantes porque el sol no se mueve
@@ -135,7 +147,7 @@ export function applyQuality(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
   if (gs.env.userData.trees !== settings.trees) {
     gs.scene.remove(gs.env);
     disposeEnvironment(gs.env);
-    gs.env = buildScenery(gs.track, settings);
+    gs.env = buildEnv(gs.track, gs.world, gs.meshes, settings);
     gs.scene.add(gs.env);
   }
   const env = gs.scene.environment;

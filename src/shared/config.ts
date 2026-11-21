@@ -52,6 +52,10 @@ export const config = {
                          scaleMin: 0.7, scaleMax: 1.4, trunkColor: '#4a3524', crownColors: ['#2f5a2a', '#3a6b30', '#2a4f2d', '#4a7a35'], attemptsPerTree: 40 },
                  skyline: { segments: 96, padM: 700, baseDropM: 6, minH: 25, maxH: 90, color: '#7d95a3' },
                  crowdPalette: ['#c0392b', '#e8e6df', '#2b6cb0', '#f1c40f', '#2d3436', '#27ae60', '#8e44ad'], crowdTexPx: 64 },
+  // Entorno real desde OSM y DEM (b12, design D8). Colores sRGB; densidad de árboles por hectárea de bosque
+  // cameraClearM: altura mínima de las cámaras exteriores sobre el terreno real (design D9)
+  world: { treesPerHa: 120, terrainChunks: 4, waterColor: '#26404a', cameraClearM: 2,
+           buildingColors: { pit: '#d9d9d4', grandstand: '#8c9096', tower: '#b7b2a8', generic: '#c9bfae' } },
   // Partículas de pista (b6, design D6). Velocidades en m/s, tiempos en s, tamaños en m, colores sRGB
   particles: { dirtMinMs: 5, smokeMinMs: 16.7, smokeSlip: 0.6,
                dirtRatePerWheel: 40, dirtRefMs: 28, smokeRatePerWheel: 30,

@@ -3,7 +3,7 @@ import type { GameConfig } from '../../shared/config';
 import { maxSteerRad } from '../../sim/car';
 import type { CarState } from '../../sim/types';
 import type { Track } from '../../track/types';
-import { activeTvCamera, buildTvCameras, CriticalSpring, fovFor, shakeAmplitude, shakeOffset, tvFovDeg, type TvCamera } from './math';
+import { activeTvCamera, buildTvCameras, clearLift, CriticalSpring, fovFor, LIFT_MAX_M, shakeAmplitude, shakeOffset, tvFovDeg, type GroundFn, type TvCamera } from './math';
 
 // Rig de cámaras (design D3): casco, persecución y TV sobre una THREE.PerspectiveCamera.
 
@@ -14,6 +14,7 @@ const ORDER: CameraMode[] = ['helmet', 'chase', 'tv'];
 const DEG = Math.PI / 180;
 const HELMET_NEAR = 0.1;
 const MIN_CHASE_SPEED_MS = 5;
+const TARGET_UP_M = 1;   // el rayo de visión apunta 1 m sobre el coche
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 
 export class CameraRig {
@@ -26,6 +27,10 @@ export class CameraRig {
   private readonly tvCams: TvCamera[];
   private needSnap = true;
   private tvIndex = -1;
+  // Cámara de TV elegida por visión (puede ser la siguiente) y elevación mantenida mientras siga activa
+  private tvSlot = -1;
+  private tvPick = -1;
+  private tvLift = 0;
   private fovDeg: number;
   private shakeM = 0;
   // Temporales reutilizados (sin asignaciones por fotograma)
@@ -40,7 +45,9 @@ export class CameraRig {
   // Objeto que recibe la pose del rig (design D2): en escritorio la propia cámara; en VR un ancla padre de la cámara
   readonly anchor: THREE.Object3D;
 
-  constructor(readonly camera: THREE.PerspectiveCamera, private readonly track: Track, private readonly cfg: GameConfig, anchor?: THREE.Object3D) {
+  // ground: altura del terreno real (b12, design D9); sin él, las cámaras no cambian
+  constructor(readonly camera: THREE.PerspectiveCamera, private readonly track: Track, private readonly cfg: GameConfig, anchor?: THREE.Object3D,
+    private readonly ground: GroundFn | null = null) {
     this.anchor = anchor ?? camera;
     const c = cfg.camera;
     this.mode = c.defaultMode;
@@ -50,6 +57,8 @@ export class CameraRig {
     this.sRoll = new CriticalSpring(c.helmet.omega);
     this.sPitch = new CriticalSpring(c.helmet.omega);
     this.tvCams = buildTvCameras(track, c);
+    // Ninguna cámara de TV bajo el terreno
+    if (ground) for (const tv of this.tvCams) tv.y = Math.max(tv.y, ground(tv.x, tv.z) + cfg.world.cameraClearM);
     this.fovDeg = camera.fov;
   }
 
@@ -87,6 +96,7 @@ export class CameraRig {
       if (snap) { this.sx.snap(ox); this.sy.snap(oy); this.sz.snap(oz); }
       else { this.sx.step(ox, dtS); this.sy.step(oy, dtS); this.sz.step(oz, dtS); }
       a.position.set(pose.x + this.sx.x, pose.y + this.sy.x, pose.z + this.sz.x);
+      if (this.ground) a.position.y = Math.max(a.position.y, this.ground(a.position.x, a.position.z) + this.cfg.world.cameraClearM);
       this.look.set(pose.x + vdx * c.chase.lookAheadM, pose.y, pose.z + vdz * c.chase.lookAheadM);
       this.lookAt(this.look);
       fov = fovFor(kmh, c);
@@ -110,9 +120,10 @@ export class CameraRig {
       near = HELMET_NEAR;
     } else {
       const i = activeTvCamera(this.tvCams, this.track, car.s);
-      const tv = this.tvCams[i];
-      this.tvIndex = i;
-      a.position.set(tv.x, tv.y, tv.z);
+      const [k, lift] = this.ground ? this.tvVisible(i, pose) : [i, 0];
+      const tv = this.tvCams[k];
+      this.tvIndex = k;
+      a.position.set(tv.x, tv.y + lift, tv.z);
       this.look.set(pose.x, pose.y, pose.z);
       this.lookAt(this.look);
       fov = tvFovDeg(a.position.distanceTo(this.look), c);
@@ -138,6 +149,25 @@ export class CameraRig {
     }
     this.fovDeg = fov;
     a.updateMatrixWorld();
+  }
+
+  // Visión de la cámara de TV sobre el relieve (design D9): eleva la activa (máx. LIFT_MAX_M) y, si no basta,
+  // prueba la siguiente. La elevación solo crece mientras no cambie la cámara, para no dar saltos.
+  private tvVisible(slot: number, pose: CarPose): [number, number] {
+    const g = this.ground!;
+    if (slot !== this.tvSlot) { this.tvSlot = slot; this.tvPick = slot; this.tvLift = 0; }
+    const tx = pose.x, ty = pose.y + TARGET_UP_M, tz = pose.z;
+    const lift = clearLift(g, this.tvCams[this.tvPick], tx, ty, tz, this.tvLift);
+    if (lift !== null) { this.tvLift = lift; return [this.tvPick, lift]; }
+    const n = this.tvCams.length;
+    for (const cand of [slot, (slot + 1) % n]) {
+      if (cand === this.tvPick) continue;
+      const l = clearLift(g, this.tvCams[cand], tx, ty, tz);
+      if (l !== null) { this.tvPick = cand; this.tvLift = l; return [cand, l]; }
+    }
+    // Sin visión posible: la activa a la elevación máxima
+    this.tvLift = LIFT_MAX_M;
+    return [this.tvPick, LIFT_MAX_M];
   }
 
   // Orienta el ancla con la convención de cámara (−Z hacia el objetivo), también si el ancla no es una cámara

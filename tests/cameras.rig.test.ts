@@ -5,6 +5,7 @@ import { createCarState } from '../src/sim/car';
 import type { CarState } from '../src/sim/types';
 import { makeStraightTrack } from '../src/track/synthetic';
 import { CameraRig, type CarPose } from '../src/render/cameras/rig';
+import { terrainBlocks, type GroundFn } from '../src/render/cameras/math';
 
 const G = config.sim.g;
 const DEG = Math.PI / 180;
@@ -164,5 +165,55 @@ describe('Ancla de cámara (design D2)', () => {
     expect(rb.length).toBe(ra.length);
     for (let i = 0; i < ra.length; i++) for (let j = 0; j < 16; j++) expect(rb[i][j]).toBeCloseTo(ra[i][j], 5);
     expect(camB.position.lengthSq()).toBe(0);
+  });
+});
+
+describe('Cámaras sobre el relieve (b12, design D9)', () => {
+  const CLEAR = config.world.cameraClearM;
+  // Coche parado en x = s (pista recta a lo largo de +x, y = 0), rig en el modo pedido
+  function at(ground: GroundFn | null, mode: 'chase' | 'tv', x: number) {
+    const camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.3, 2500);
+    const rig = new CameraRig(camera, track, config, undefined, ground);
+    while (rig.mode !== mode) rig.next();
+    const car = createCarState();
+    car.s = x; car.x = x;
+    const pose: CarPose = { x, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+    rig.update(pose, car, DT, 0);
+    return rig.debug();
+  }
+  const X = 1136;   // 20 m antes de la cámara de TV activa (índice 3, s ≈ 1156)
+
+  it('Sin terreno: mismas cámaras que sin mundo', () => {
+    for (const mode of ['chase', 'tv'] as const) expect(at(() => -100, mode, X)).toEqual(at(null, mode, X));
+  });
+
+  it('Rampa: TV y persecución quedan ≥ cameraClearM sobre el terreno', () => {
+    const ramp: GroundFn = (x, z) => Math.max(-1, (-z - 8) * 1.5) + Math.max(0, X - 3 - x) * 0.8;   // sube hacia la izquierda y hacia atrás
+    const tv = at(ramp, 'tv', X);
+    expect(tv.pos[1]).toBeGreaterThanOrEqual(ramp(tv.pos[0], tv.pos[2]) + CLEAR - 1e-6);
+    expect(terrainBlocks(ramp, tv.pos[0], tv.pos[1], tv.pos[2], X, 1, 0)).toBe(false);
+    const ch = at(ramp, 'chase', X);
+    expect(ch.pos[1]).toBeGreaterThanOrEqual(ramp(ch.pos[0], ch.pos[2]) + CLEAR - 1e-6);
+  });
+
+  it('Loma entre cámara y coche: se eleva (≤ +25 m) hasta despejar', () => {
+    const base = at(null, 'tv', X);
+    const cz = base.pos[2];
+    const hill: GroundFn = (_x, z) => (z < cz * 0.25 && z > cz * 0.75 ? 6 : -1);
+    expect(terrainBlocks(hill, base.pos[0], base.pos[1], base.pos[2], X, 1, 0)).toBe(true);
+    const tv = at(hill, 'tv', X);
+    expect(tv.tvIndex).toBe(base.tvIndex);
+    expect(tv.pos[1]).toBeGreaterThan(base.pos[1]);
+    expect(tv.pos[1]).toBeLessThanOrEqual(base.pos[1] + 25);
+    expect(terrainBlocks(hill, tv.pos[0], tv.pos[1], tv.pos[2], X, 1, 0)).toBe(false);
+  });
+
+  it('Loma insalvable junto a la cámara activa: pasa a la siguiente', () => {
+    const base = at(null, 'tv', X);
+    const cx = base.pos[0], cz = base.pos[2];
+    const wall: GroundFn = (x, z) => (Math.abs(x - cx) < 40 && z < cz * 0.5 && z > cz * 0.94 ? 100 : -1);
+    const tv = at(wall, 'tv', X);
+    expect(tv.tvIndex).toBe(base.tvIndex + 1);
+    expect(terrainBlocks(wall, tv.pos[0], tv.pos[1], tv.pos[2], X, 1, 0)).toBe(false);
   });
 });

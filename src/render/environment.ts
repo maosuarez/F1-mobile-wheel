@@ -95,9 +95,15 @@ function treePlacements(track: Track, count: number, rnd: () => number): { x: nu
   return out;
 }
 
+export interface TreePlacement { x: number; y: number; z: number; sc: number; ry: number }
+
 function buildTrees(track: Track, count: number, rnd: () => number): THREE.InstancedMesh[] {
+  return createTreeMeshes(treePlacements(track, count, rnd), rnd);
+}
+
+// Troncos y copas instanciados (2 draw calls) en las posiciones dadas; también los usa el entorno real (b12)
+export function createTreeMeshes(pts: TreePlacement[], rnd: () => number): THREE.InstancedMesh[] {
   const T = config.environment.tree;
-  const pts = treePlacements(track, count, rnd);
   const trunkG = new THREE.CylinderGeometry(T.trunkR * 0.7, T.trunkR, T.trunkH, 6).translate(0, T.trunkH / 2, 0);
   const crownG = new THREE.ConeGeometry(T.crownR, T.crownH, 7).translate(0, T.trunkH + T.crownH / 2 - 0.5, 0);
   const trunk = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ color: T.trunkColor, roughness: 1, flatShading: true }), pts.length);
@@ -167,6 +173,8 @@ export function disposeEnvironment(group: THREE.Object3D): void {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     m.geometry.dispose();
+    // Materiales compartidos con la pista (entorno real): no se liberan aquí
+    if (m.userData.sharedMaterial) return;
     const mat = m.material as THREE.MeshStandardMaterial;
     mat.map?.dispose();
     mat.dispose();

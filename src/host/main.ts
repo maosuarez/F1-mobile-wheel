@@ -1,6 +1,7 @@
 import './hud.css';
 import { config } from '../shared/config';
 import { loadTrack } from '../track/load';
+import { loadWorld, terrainHeight } from '../track/world';
 import { Simulation } from '../sim/simulation';
 import { NEUTRAL_INPUT, type DriverInput } from '../sim/types';
 import { applyQuality, createRenderer, createScene, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
@@ -93,7 +94,14 @@ async function initWheelButton(): Promise<void> {
 void initWheelButton();
 
 async function start(): Promise<void> {
-  const track = await loadTrack('interlagos');
+  // Entorno real en paralelo con la pista (b12, design D7): null → entorno procedural
+  const TRACK_ID = 'interlagos';
+  const [track, world] = await Promise.all([loadTrack(TRACK_ID), loadWorld(TRACK_ID)]);
+  if (world) {
+    const attr = $('attribution');
+    attr.textContent = world.attribution;
+    attr.hidden = false;
+  }
   const sim = new Simulation(track);
   sim.timer.setBestLap(loadBest(track.id));
 
@@ -102,14 +110,16 @@ async function start(): Promise<void> {
   // Con GL por software, nivel 'software' sin adaptación salvo ?quality= (design D1)
   const gpuName = rendererName(renderer);
   const q0 = initialQuality(qualityParam, gpuName);
-  const gs = createScene(track, QUALITY[q0.level]);
+  const gs = createScene(track, QUALITY[q0.level], world);
   const { scene, camera } = gs;
   const carVisual = buildCar();
   const car = carVisual.group;
   car.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
   scene.add(car);
   // Rig de escritorio: el ancla es la propia cámara (design D2). El rig VR se crea al entrar en la sesión
-  const deskRig = new CameraRig(camera, track, config);
+  // Cámaras exteriores sobre el terreno real (b12, design D9)
+  const ground = world ? (x: number, z: number) => terrainHeight(world, x, z) : null;
+  const deskRig = new CameraRig(camera, track, config, undefined, ground);
   let rig = deskRig;
   const audio = new EngineAudio(config);
   audioRef = audio;
@@ -331,7 +341,7 @@ async function start(): Promise<void> {
   const vr = new VrSession(renderer, $('vr-enter') as HTMLButtonElement, navigator, window.isSecureContext, {
     onStart: () => {
       inVr = true;
-      vrRig ??= new CameraRig(camera, track, config, vrAnchor);
+      vrRig ??= new CameraRig(camera, track, config, vrAnchor, ground);
       syncRigMode(vrRig, deskRig);
       rig = vrRig;
       scene.add(vrAnchor);

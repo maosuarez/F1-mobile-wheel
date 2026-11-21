@@ -108,3 +108,31 @@ export function tvFovDeg(distM: number, c: CameraCfg): number {
   const fov = 2 * Math.atan(t.frameWidthM / (2 * d * (16 / 9))) / DEG;
   return clamp(fov, t.minFovDeg, t.maxFovDeg);
 }
+
+// --- Relieve real (b12, design D9) ---
+
+// Altura del terreno en (x, z) en metros; null = sin mundo (cámaras sin cambios)
+export type GroundFn = (x: number, z: number) => number;
+export const RAY_STEP_M = 5;     // muestreo del rayo cámara→coche
+export const LIFT_STEP_M = 5;    // escalones de elevación al buscar visión
+export const LIFT_MAX_M = 25;    // elevación máxima sobre la altura de la cámara
+
+// true si el terreno corta el segmento a→b (muestreado cada RAY_STEP_M, sin los extremos)
+export function terrainBlocks(ground: GroundFn, ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+  const len = Math.hypot(bx - ax, by - ay, bz - az);
+  const n = Math.floor(len / RAY_STEP_M);
+  for (let k = 1; k <= n; k++) {
+    const t = (k * RAY_STEP_M) / len;
+    if (t >= 1) break;
+    if (ground(ax + (bx - ax) * t, az + (bz - az) * t) > ay + (by - ay) * t) return true;
+  }
+  return false;
+}
+
+// Elevación mínima (múltiplo de LIFT_STEP_M, desde minLift) que despeja la visión; null si ni con LIFT_MAX_M
+export function clearLift(ground: GroundFn, cam: TvCamera, tx: number, ty: number, tz: number, minLift = 0): number | null {
+  for (let lift = minLift; lift <= LIFT_MAX_M + 1e-9; lift += LIFT_STEP_M) {
+    if (!terrainBlocks(ground, cam.x, cam.y + lift, cam.z, tx, ty, tz)) return lift;
+  }
+  return null;
+}
