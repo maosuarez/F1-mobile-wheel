@@ -12,6 +12,14 @@ class TrackSpec:
     official_length_m: float
     direction: str  # "ccw" | "cw"
     corner_names: dict[int, str]  # nº de curva -> nombre; el resto "Curva N"
+    bbox: tuple[float, float, float, float] | None = None  # lat_min, lon_min, lat_max, lon_max
+
+
+# Constantes del pipeline del entorno (design b12 D8)
+WORLD_DEFAULTS = {
+    "marginM": 600.0, "cellM": 10.0, "blendM": 40.0, "terrainSinkM": 0.3,
+    "clearM": 6.0, "grandstandClearM": 2.0, "alignMaxRmsM": 8.0, "tileZoom": 14,
+}
 
 
 TRACKS: dict[str, TrackSpec] = {
@@ -30,6 +38,7 @@ TRACKS: dict[str, TrackSpec] = {
             10: "Bico de Pato", 11: "Mergulho", 12: "Junção",
             13: "Subida dos Boxes", 14: "Arquibancadas",
         },
+        bbox=(-23.7080, -46.7050, -23.6960, -46.6920),
     ),
     "monza": TrackSpec(
         id="monza",

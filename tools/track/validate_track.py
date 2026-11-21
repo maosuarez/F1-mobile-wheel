@@ -27,11 +27,97 @@ def in_span(s: np.ndarray, a: float, b: float, L: float) -> np.ndarray:
     return ((s - a) % L) <= span(a, b, L)
 
 
+def check_world(spec_id: str) -> None:
+    """Escenarios de la spec track-world sobre public/track/<id>.world.json."""
+    from tools.track.build_world import Grid, covering, prepare, zone_dist  # noqa: E402
+    root = Path(__file__).resolve().parents[2]
+    p = root / "public" / "track" / f"{spec_id}.world.json"
+    if not p.exists():
+        check(False, "world.json existe", str(p))
+        return
+    w = json.loads(p.read_text(encoding="utf-8"))
+    size = p.stat().st_size
+    check(size < 1_500_000, "world.json < 1,5 MB", f"{size / 1e6:.3f} MB")
+    t = w["terrain"]
+    check(len(t["h"]) == t["nx"] * t["nz"], "terrain.h = nx*nz", f"{len(t['h'])} vs {t['nx'] * t['nz']}")
+    rings = [b["ring"] for b in w["buildings"]] + [x["ring"] for x in w["water"]] + [x["ring"] for x in w["forest"]]
+    check(all(len(r) % 2 == 0 and len(r) >= 6 for r in rings), "anillos pares y >= 3 vértices", f"{len(rings)} anillos")
+    ctx = prepare(TRACKS[spec_id])
+    sm, grid = ctx["sm"], Grid(t)
+    d_step = float(ctx["trk"]["step_m"])
+    # terreno bajo la pista dentro de los muros
+    idx = np.arange(0, len(sm["x"]), 5)
+    pts, ytr, own = [], [], []
+    for off in (-0.95, -0.5, 0.0, 0.5, 0.95):
+        w_ = np.where(off >= 0, sm["wl"][idx], sm["wr"][idx]) + ctx["runoff"]
+        pts.append(np.column_stack([sm["x"][idx] + sm["nx"][idx] * off * w_, sm["z"][idx] + sm["nz"][idx] * off * w_]))
+        ytr.append(sm["y"][idx])
+        own.append(idx)
+    pts, ytr, own = np.vstack(pts), np.concatenate(ytr), np.concatenate(own)
+    n_s, L = len(sm["x"]), len(sm["x"]) * float(d_step)
+    ht = grid.at(pts)
+    bad1 = bad2 = n1 = n2 = 0
+    lo1 = hi1 = lo2 = None
+    band = float(t["cell"]) * 2.5  # franja de transición (celda del terreno) alrededor de la zona de otro tramo
+    nb = 0
+    for k, (c, cb) in enumerate(zip(covering(ctx, pts), covering(ctx, pts, band))):
+        ds = np.abs(c - own[k]); ds = np.minimum(ds, n_s - ds) * d_step
+        other = c[ds > 60.0]
+        dsb = np.abs(cb - own[k]); dsb = np.minimum(dsb, n_s - dsb) * d_step
+        cd = covering(ctx, pts[k:k + 1], -float(t["cell"]) * 0.5)[0]
+        deep = cd[np.minimum(np.abs(cd - own[k]), n_s - np.abs(cd - own[k])) * d_step > 60.0]
+        if (len(other) == 0 and (dsb > 60.0).any()) or (len(other) and len(deep) == 0):
+            nb += 1  # transición: ni zona única ni solapada a fondo
+            continue
+        other = deep if len(other) else other
+        if len(other) == 0:  # un solo tramo
+            v = ytr[k] - ht[k]
+            n1 += 1
+            lo1, hi1 = (v, v) if lo1 is None else (min(lo1, v), max(hi1, v))
+            bad1 += not (0.1 - 0.005 <= v <= 0.6 + 0.005)  # tolerancia: alturas en dm
+        else:  # zonas solapadas: bajo el tramo más bajo
+            v = min(ytr[k], sm["y"][other].min()) - ht[k]
+            n2 += 1
+            lo2 = v if lo2 is None else min(lo2, v)
+            bad2 += v < 0.1
+    check(bad1 == 0, "terreno 0,1-0,6 m bajo la pista (un solo tramo, hasta 95 % del muro)",
+          f"[{lo1:.3f},{hi1:.3f}] m, {bad1} fuera de {n1}")
+    check(bad2 == 0, "zonas solapadas: terreno >= 0,1 m bajo el tramo más bajo",
+          f"mín={lo2 if lo2 is None else round(lo2, 2)} m, {bad2} fuera de {n2} (+{nb} en franja de transición)")
+    # relieve lejos de la pista
+    gx, gz = np.meshgrid(t["x0"] + np.arange(t["nx"]) * t["cell"], t["z0"] + np.arange(t["nz"]) * t["cell"])
+    g = np.column_stack([gx.ravel(), gz.ravel()])
+    far = zone_dist(ctx, g) > 40.0
+    dem_h = ctx["dem"].sample(*ctx["to_osm"](g[far]).T) + ctx["offset"]
+    mad = float(np.abs(np.asarray(t["h"])[far] / 10.0 - dem_h).mean())
+    check(mad < 0.5 and far.sum() > 0, "relieve = DEM + offset (>40 m del muro, MAE < 0,5 m)", f"MAE={mad:.3f} m, {int(far.sum())} celdas")
+    # contenido
+    kinds = {k: sum(b["kind"] == k for b in w["buildings"]) for k in ("pit", "grandstand", "tower", "generic")}
+    check(kinds["pit"] >= 1 and kinds["grandstand"] >= 1, "al menos un pit y un grandstand", kinds)
+    check(len(w["water"]) >= 1, "al menos un polígono de agua", len(w["water"]))
+    check(w["pitlane"] is not None and len(w["pitlane"]["pts"]) >= 6, "calle de boxes no nula",
+          "presente" if w["pitlane"] else "null")
+    # zona libre
+    mn = {"gr": np.inf, "otros": np.inf}
+    for b in w["buildings"]:
+        key = "gr" if b["kind"] == "grandstand" else "otros"
+        mn[key] = min(mn[key], zone_dist(ctx, np.array(b["ring"]).reshape(-1, 2)).min())
+    check(mn["otros"] >= 6.0 - 0.05 and mn["gr"] >= 2.0 - 0.05, "zona libre: edificios >= +6 m, gradas >= +2 m del muro",
+          f"mín edificios={mn['otros']:.2f} gradas={mn['gr']:.2f}")
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("uso: validate_track.py <ruta.json>")
+    args = sys.argv[1:]
+    world = "--world" in args
+    args = [a for a in args if a != "--world"]
+    if args and args[0] == "--track" and len(args) == 2:
+        path = Path(__file__).resolve().parents[2] / "public" / "track" / f"{args[1]}.json"
+    elif len(args) == 1:
+        path = Path(args[0])
+    else:
+        print("uso: validate_track.py <ruta.json> | --track <id> [--world]")
         return 2
-    d = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    d = json.loads(path.read_text(encoding="utf-8"))
     missing = [k for k in KEYS if k not in d]
     check(not missing, "claves de primer nivel", f"faltan {missing}" if missing else "completas")
     if missing:
@@ -150,6 +236,8 @@ def main() -> int:
         kok &= len(kb) >= 8
     check(kok, "pianos (>=8, 20-400 m, separación >=15 m)", f"{len(kb)} tramos")
     check(d["runoff_m"] > 0, "runoff_m > 0", d["runoff_m"])
+    if world:
+        check_world(d["id"])
     return report()
 
 
