@@ -105,6 +105,13 @@ export const config = {
            stickShiftOn: 0.7, stickShiftOff: 0.3,
            // Índices xr-standard (b9, design D5): agarre y clic de palanca; sin verificar con visor real
            gripButton: 1, stickClickButton: 3 },
+  // Pantalla dividida local (b15, design D7). p2Keys: teclas del jugador 2 (códigos KeyboardEvent.code)
+  // shareShadowM: distancia entre coches por debajo de la cual comparten la sombra (D3); shadowMarginM: margen del encuadre;
+  // contactShadowM: radio del disco de sombra falsa de J2 cuando la sombra sigue solo a J1
+  split: { maxPlayers: 2, engineGain: 0.6, maxQuality: 'medium' as 'low' | 'medium' | 'high',
+           shareShadowM: 150, shadowMarginM: 30, contactShadowM: 1.6,
+           p2Keys: { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
+                     shiftUp: 'Period', shiftDown: 'Comma', drs: 'Slash', ers: 'ShiftRight' } },
   // Mando USB (b10, design D3)
   gamepad: { stickDeadzone: 0.08, triggerDeadzone: 0.05, steerExpo: 1.4 },
   // Volante móvil (b3, design D5)

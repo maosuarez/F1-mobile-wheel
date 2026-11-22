@@ -20,6 +20,19 @@ export function nearestRivals(x: number, z: number, rivals: readonly { id: numbe
   return near.slice(0, count).map((n) => n.id);
 }
 
+// Igual que nearestRivals con varios oyentes (pantalla dividida, b15 D5): distancia al jugador más cercano de cada rival.
+export function nearestRivalsMulti(from: readonly { x: number; z: number }[], rivals: readonly { id: number; cur: { x: number; z: number } }[],
+                                   maxM: number, count: number): number[] {
+  const near: { id: number; d2: number }[] = [];
+  for (const r of rivals) {
+    let d2 = Infinity;
+    for (const p of from) { const dx = r.cur.x - p.x, dz = r.cur.z - p.z; d2 = Math.min(d2, dx * dx + dz * dz); }
+    if (d2 < maxM * maxM) near.push({ id: r.id, d2 });
+  }
+  near.sort((a, b) => a.d2 - b.d2 || a.id - b.id);
+  return near.slice(0, count).map((n) => n.id);
+}
+
 // Asigna ids a voces conservando la voz de los que ya sonaban (sin saltos de una voz a otra). null = voz libre.
 export function assignVoices(current: readonly (number | null)[], wanted: readonly number[]): (number | null)[] {
   const out: (number | null)[] = current.map((id) => (id !== null && wanted.includes(id) ? id : null));
@@ -53,9 +66,12 @@ export class RivalAudio {
   voices(): number[] { return this.ids.filter((id): id is number => id !== null); }
 
   // out: contexto y bus del motor del jugador (null si el audio no ha arrancado); from: posición del coche del jugador.
-  update(out: { ctx: AudioContext; bus: AudioNode } | null, rivals: readonly RivalSound[], from: { x: number; z: number },
-         camera: THREE.Object3D): void {
-    this.ids = assignVoices(this.ids, nearestRivals(from.x, from.z, rivals, this.a.rivalMaxM, this.a.rivalVoices));
+  // from: posición del jugador, o de cada jugador local con pantalla dividida.
+  update(out: { ctx: AudioContext; bus: AudioNode } | null, rivals: readonly RivalSound[],
+         from: { x: number; z: number } | readonly { x: number; z: number }[], camera: THREE.Object3D): void {
+    const wanted = Array.isArray(from) ? nearestRivalsMulti(from, rivals, this.a.rivalMaxM, this.a.rivalVoices)
+      : nearestRivals((from as { x: number }).x, (from as { z: number }).z, rivals, this.a.rivalMaxM, this.a.rivalVoices);
+    this.ids = assignVoices(this.ids, wanted);
     if (!out) return;
     if (this.ctx !== out.ctx) this.build(out.ctx, out.bus);
     const ctx = out.ctx, now = ctx.currentTime, tau = this.a.paramTauS;

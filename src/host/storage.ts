@@ -21,7 +21,7 @@ export function saveBest(trackId: string, timeS: number): void {
 }
 
 // Última elección del menú de carrera (b14): modo, dificultad y rivales; lo inválido se descarta
-export interface RaceChoice { mode: 'practice' | 'race'; ai: 'easy' | 'medium' | 'hard'; rivals: number }
+export interface RaceChoice { mode: 'practice' | 'race'; ai: 'easy' | 'medium' | 'hard'; rivals: number; players?: 1 | 2 }
 const CHOICE_KEY = 'f1mw.raceChoice';
 
 export function loadRaceChoice(): RaceChoice | null {
@@ -32,7 +32,7 @@ export function loadRaceChoice(): RaceChoice | null {
     if ((o.mode !== 'practice' && o.mode !== 'race') || (o.ai !== 'easy' && o.ai !== 'medium' && o.ai !== 'hard')) return null;
     const n = Math.round(Number(o.rivals));
     if (!Number.isFinite(n) || n < 1 || n > 9) return null;
-    return { mode: o.mode, ai: o.ai, rivals: n };
+    return { mode: o.mode, ai: o.ai, rivals: n, ...(o.players === 1 || o.players === 2 ? { players: o.players } : {}) };
   } catch {
     return null;
   }

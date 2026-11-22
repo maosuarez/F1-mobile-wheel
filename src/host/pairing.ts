@@ -50,24 +50,69 @@ export class PairingUi {
   private readonly hint = q('pairing-hint');
   private readonly relay = q('pairing-relay');
   private readonly countdown = q('countdown');
+  // Jugador 2 (b15): tarjeta propia con su QR, código y estado
+  private readonly card2 = q('pairing-p2');
+  private readonly code2 = q('pairing-code-p2');
+  private readonly qr2 = q('pairing-qr-p2') as HTMLCanvasElement;
+  private readonly tag1 = q('pairing-tag-p1');
+  private readonly status = [q('pairing-status-p1'), q('pairing-status-p2')];
   private readonly toastEl = q('toast');
   private readonly lost = q('overlay-wheel-lost');
   private readonly lostQr = q('wheel-lost-qr') as HTMLCanvasElement;
   private readonly lostCode = q('wheel-lost-code');
+  private readonly lostLabel = q('wheel-lost-label');
+  private readonly rooms: { room: string; url: string }[] = [];
+  private lostFor = 0;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   get qrCanvas(): HTMLCanvasElement { return this.qr; }
   get hintText(): string { return this.hint.textContent ?? ''; }
+  get qrCanvasP2(): HTMLCanvasElement { return this.qr2; }
+  get roomTextP2(): string { return this.code2.textContent ?? ''; }
   get roomText(): string { return this.code.textContent ?? ''; }
 
-  setRoom(room: string, url: string, mode: WheelUrlMode, port: string): void {
+  // Con 2 jugadores se muestran dos tarjetas etiquetadas J1/J2; con 1 queda la interfaz de siempre
+  setPlayerCount(n: number): void {
+    this.pairing.dataset.players = String(n);
+    this.card2.hidden = n < 2;
+    this.tag1.hidden = n < 2;
+    this.status[0].hidden = n < 2;
+  }
+
+  setConnected(player: number, ok: boolean): void {
+    const el = this.status[player];
+    if (!el) return;
+    el.dataset.ok = ok ? '1' : '0';
+    el.textContent = ok ? 'Conectado' : 'Esperando volante';
+  }
+
+  // player 0 = J1 (también alimenta el overlay de volante perdido); player 1 = J2
+  setRoom(room: string, url: string, mode: WheelUrlMode, port: string, player = 0): void {
+    this.rooms[player] = { room, url };
+    if (player === 1) {
+      this.code2.textContent = room;
+      this.qr2.dataset.url = url;
+      QRCode.toCanvas(this.qr2, url, { width: 320, margin: 2 }).catch(() => {});
+      return;
+    }
     this.code.textContent = room;
-    this.lostCode.textContent = room;
+    if (this.lostFor === 0) this.lostCode.textContent = room;
     this.hint.textContent = pairingHint(mode, port);
     this.qr.dataset.url = url;
     const opts = { width: 320, margin: 2 };
     QRCode.toCanvas(this.qr, url, opts).catch(() => {});
-    QRCode.toCanvas(this.lostQr, url, { ...opts, width: 220 }).catch(() => {});
+    if (this.lostFor === 0) QRCode.toCanvas(this.lostQr, url, { ...opts, width: 220 }).catch(() => {});
+  }
+
+  // Overlay de volante perdido de un jugador (b15 D6): con 2 jugadores "Volante J2 desconectado" con su código y QR
+  setLostPlayer(player: number, split: boolean): void {
+    const label = split ? `Volante J${player + 1} desconectado` : 'Volante desconectado';
+    if (this.lostLabel.textContent !== label) this.lostLabel.textContent = label;
+    const r = this.rooms[player];
+    if (!r || player === this.lostFor) return;
+    this.lostFor = player;
+    this.lostCode.textContent = r.room;
+    QRCode.toCanvas(this.lostQr, r.url, { width: 220, margin: 2 }).catch(() => {});
   }
 
   setRelayDown(down: boolean): void { this.relay.hidden = !down; }

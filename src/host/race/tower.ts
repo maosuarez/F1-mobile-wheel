@@ -1,11 +1,12 @@
-import { TEAMS, driverAt } from '../../shared/teams';
+import { TEAMS, driverAt, PLAYER2_DRIVER } from '../../shared/teams';
 import type { Standing } from '../../sim/race';
 
 // HUD de carrera (b14 D7): "P4/10", "V 2/5", diferencia con delante y detrás y torre izquierda con las posiciones.
 // El modelo es puro; Tower solo escribe el DOM, a 5 Hz.
 
 export interface TowerEntry { id: number; code: string; color: string }
-export interface TowerRow { pos: number; id: number; code: string; color: string; gap: string; player: boolean }
+// local: índice del jugador local (0 = J1, 1 = J2) o −1 si es un rival
+export interface TowerRow { pos: number; id: number; code: string; color: string; gap: string; player: boolean; local: number }
 export interface TowerModel {
   pos: string; lap: string; ahead: string; behind: string; rows: TowerRow[];
 }
@@ -21,20 +22,23 @@ export function gapText(s: number | null, sign: '+' | '−'): string {
 // Etiquetas fijas de cada coche: la escudería es la de la plaza de pilotos (como en RaceController)
 export function towerEntries(entries: readonly { id: number; team: number; name: string }[]): TowerEntry[] {
   return entries.map((e) => {
-    const drv = TEAMS[e.team].drivers.find((d) => d.name === e.name) ?? driverAt(e.id).driver;
+    const drv = [...TEAMS[e.team].drivers, PLAYER2_DRIVER].find((d) => d.name === e.name) ?? driverAt(e.id).driver;
     return { id: e.id, code: drv.code, color: TEAMS[e.team].primary };
   });
 }
 
-export function towerModel(standings: readonly Standing[], entries: readonly TowerEntry[], playerId: number, laps: number): TowerModel {
+// localIds: ids de los jugadores locales (pantalla dividida); por defecto solo playerId
+export function towerModel(standings: readonly Standing[], entries: readonly TowerEntry[], playerId: number, laps: number,
+  localIds: readonly number[] = [playerId]): TowerModel {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const idx = standings.findIndex((s) => s.id === playerId);
   const me = idx >= 0 ? standings[idx] : null;
   const behind = idx >= 0 ? standings[idx + 1] : undefined;
   const rows = standings.map((s) => {
     const e = byId.get(s.id);
+    const local = localIds.indexOf(s.id);
     return { pos: s.pos, id: s.id, code: e?.code ?? '???', color: e?.color ?? '#ffffff',
-      gap: s.pos === 1 ? 'LÍDER' : gapText(s.gapToLeaderS, '+'), player: s.id === playerId };
+      gap: s.pos === 1 ? 'LÍDER' : gapText(s.gapToLeaderS, '+'), player: local >= 0, local };
   });
   return {
     pos: me ? `P${me.pos}/${standings.length}` : '',
@@ -58,10 +62,11 @@ export class Tower {
     if (this.cache.get(key) !== v) { this.cache.set(key, v); e.textContent = v; }
   }
 
-  update(standings: () => readonly Standing[], entries: readonly TowerEntry[], playerId: number, laps: number, nowMs: number): void {
+  update(standings: () => readonly Standing[], entries: readonly TowerEntry[], playerId: number, laps: number, nowMs: number,
+    localIds: readonly number[] = [playerId]): void {
     if (this.root.hidden || nowMs - this.lastMs < 1000 / TOWER_HZ) return;
     this.lastMs = nowMs;
-    const m = towerModel(standings(), entries, playerId, laps);
+    const m = towerModel(standings(), entries, playerId, laps, localIds);
     this.text('pos', this.el.pos, m.pos);
     this.text('lap', this.el.lap, m.lap);
     this.text('ahead', this.el.ahead, `▲ ${m.ahead}`);
@@ -75,10 +80,11 @@ export class Tower {
     while (list.children.length > m.rows.length) list.lastElementChild!.remove();
     m.rows.forEach((r, i) => {
       const li = list.children[i] as HTMLElement;
-      const key = `${r.id}|${r.gap}|${r.player}`;
+      const key = `${r.id}|${r.gap}|${r.local}`;
       if (this.cache.get(`row${i}`) === key) return;
       this.cache.set(`row${i}`, key);
       li.dataset.player = r.player ? '1' : '0';
+      li.dataset.local = String(r.local);
       li.children[0].textContent = String(r.pos);
       (li.children[1] as HTMLElement).style.background = r.color;
       li.children[2].textContent = r.code;

@@ -76,3 +76,52 @@ describe('KeyboardAdapter sin alternancia de cambio', () => {
     ad.dispose();
   });
 });
+
+describe('KeyboardInput layouts (b15)', () => {
+  const mkL = (layout: 'p1' | 'p2' | 'both') => {
+    const down = new Set<string>();
+    return { down, kb: new KeyboardInput({ isDown: (c) => down.has(c) }, layout) };
+  };
+  const run = (kb: KeyboardInput) => { let i = kb.read(1 / 120); for (let n = 0; n < 60; n++) i = kb.read(1 / 120); return i; };
+  it('p1 ignora las flechas y p2 ignora WASD', () => {
+    const a = mkL('p1'), b = mkL('p2');
+    a.down.add('ArrowUp'); b.down.add('KeyW');
+    expect(run(a.kb).throttle).toBe(0);
+    expect(run(b.kb).throttle).toBe(0);
+    a.down.clear(); b.down.clear();
+    a.down.add('KeyW'); b.down.add('ArrowUp');
+    expect(run(a.kb).throttle).toBe(1);
+    expect(run(b.kb).throttle).toBe(1);
+  });
+  it('teclas independientes: una pulsación solo afecta a su jugador', () => {
+    const down = new Set<string>();
+    const ks = { isDown: (c: string) => down.has(c) };
+    const p1 = new KeyboardInput(ks, 'p1'), p2 = new KeyboardInput(ks, 'p2');
+    down.add('ArrowUp');
+    expect(run(p1).throttle).toBe(0);
+    expect(run(p2).throttle).toBe(1);
+  });
+  it('p2: dirección, freno, órdenes y ERS de config.split.p2Keys', () => {
+    const { down, kb } = mkL('p2');
+    down.add('ArrowLeft'); down.add('ArrowDown'); down.add('ShiftRight');
+    const i = run(kb);
+    expect(i.steer).toBe(-1); expect(i.brake).toBe(1); expect(i.ers).toBe(true);
+    down.add('Period'); down.add('Comma'); down.add('Slash');
+    kb.read(1 / 120);
+    expect(kb.takeCommands()).toEqual(['shiftUp', 'shiftDown', 'drs']);
+    kb.read(1 / 120);
+    expect(kb.takeCommands()).toEqual([]);                  // flanco: sin repetición
+  });
+  it('p1: Q/E/F y Espacio; no usa las teclas de p2', () => {
+    const { down, kb } = mkL('p1');
+    down.add('KeyE'); down.add('Space'); down.add('Period');
+    expect(kb.read(1 / 120).ers).toBe(true);
+    expect(kb.takeCommands()).toEqual(['shiftUp']);
+  });
+  it('both (un jugador) mezcla WASD y flechas como antes', () => {
+    const { down, kb } = mkL('both');
+    down.add('ArrowUp'); down.add('KeyA');
+    const i = run(kb);
+    expect(i.throttle).toBe(1); expect(i.steer).toBe(-1);
+  });
+});

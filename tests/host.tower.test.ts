@@ -60,4 +60,15 @@ describe('resultados de carrera (b14 D7)', () => {
     expect(rows[2].best).toBe('-:--.---');
     expect(rows[1].team).toBe(TEAMS[0].name);
   });
+  it('2 jugadores (b15): torre y resultados resaltan J1 y J2 con su índice local', () => {
+    const ents3 = [{ id: 0, name: 'Jugador', team: 0 }, { id: 1, name: 'Lena Voss', team: 1 }, { id: 2, name: 'Kai Brandt', team: 2 }];
+    const sts = [st(1, 1, { lapsDone: 5 }), st(0, 2), st(2, 3)];
+    const rows = resultsModel(sts, ents3, 0, 5, [0, 2]);
+    expect(rows.map((r) => r.local)).toEqual([-1, 0, 1]);
+    expect(rows.map((r) => r.player)).toEqual([false, true, true]);
+    expect(resultsModel(sts, ents3, 0, 5).map((r) => r.local)).toEqual([-1, 0, -1]);
+    const tw = towerModel(sts, towerEntries(ents3), 0, 5, [0, 2]);
+    expect(tw.rows.map((r) => r.local)).toEqual([-1, 0, 1]);
+    expect(tw.rows.filter((r) => r.player)).toHaveLength(2);
+  });
 });

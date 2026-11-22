@@ -1,5 +1,5 @@
 import { config as defaultConfig, type GameConfig } from '../../shared/config';
-import { driverAt } from '../../shared/teams';
+import { driverAt, PLAYER2_DRIVER } from '../../shared/teams';
 import { RaceSession, type RaceEvent, type RacePhase, type Standing } from '../../sim/race';
 import { RivalDriver, rivalSkill, type AiLevel, type CarSnapshot } from '../../sim/rival';
 import type { Simulation } from '../../sim/simulation';
@@ -48,6 +48,9 @@ export class RaceController {
   readonly session: RaceSession;
   readonly playerId: number;
   readonly playerSim: Simulation;
+  // Jugadores humanos locales (b15): ids de sus entradas y sus Simulation; [0] = playerId / playerSim
+  readonly humanIds: readonly number[];
+  readonly humanSims: readonly Simulation[];
   private readonly cfg: GameConfig;
   private readonly drivers: (RivalDriver | null)[];
   private readonly views: RivalView[];
@@ -55,23 +58,29 @@ export class RaceController {
   private readonly inputs: DriverInput[];
   private readonly commands: DriverCommand[][];
 
-  constructor(track: Track, opts: RaceOptions, cfg: GameConfig = defaultConfig) {
+  // humans: jugadores locales (1 o 2). Con 2, J2 sale en la plaza siguiente a J1 y la parrilla no pasa de 10 coches.
+  constructor(track: Track, opts: RaceOptions, cfg: GameConfig = defaultConfig, humans = 1) {
     this.opts = opts;
     this.track = track;
     this.cfg = cfg;
     const race = opts.mode === 'race';
-    const n = race ? 1 + Math.max(1, Math.min(9, opts.rivals)) : 1;
-    this.playerId = race ? Math.min(cfg.race.playerGridSlot, n - 1) : 0;
-    // Plaza k de la parrilla: el jugador es el piloto 0; los rivales toman los pilotos 1, 2, … por orden de parrilla
-    let next = 1;
+    const h = Math.max(1, Math.min(2, Math.round(humans)));
+    const n = race ? h + Math.max(1, Math.min(10 - h, opts.rivals)) : h;
+    this.playerId = race ? Math.min(cfg.race.playerGridSlot, n - h) : 0;
+    this.humanIds = Array.from({ length: h }, (_, i) => this.playerId + i);
+    // Plaza k de la parrilla: los jugadores son los pilotos 0 (y 1); los rivales toman los siguientes por orden de parrilla
+    let next = h;
     const entries = Array.from({ length: n }, (_, k) => {
-      const { team, driver } = driverAt(k === this.playerId ? 0 : next++);
-      return { name: driver.name, team, isAi: k !== this.playerId };
+      const hi = this.humanIds.indexOf(k);
+      const { team, driver } = hi === 1 ? { team: 0, driver: PLAYER2_DRIVER } : driverAt(hi >= 0 ? hi : next++);
+      return { name: driver.name, team, isAi: hi < 0 };
     });
     this.session = new RaceSession(track, entries, cfg, opts.seed);
-    this.playerSim = this.session.entries[this.playerId].sim;
+    this.humanSims = this.humanIds.map((id) => this.session.entries[id].sim);
+    this.playerSim = this.humanSims[0];
     if (!race) {
-      this.playerSim.reset();          // misma colocación que antes de b14 (d = 0)
+      // 1 jugador: misma colocación que antes de b14 (d = 0); 2 jugadores: plazas 0 y 1 de la parrilla
+      if (h === 1) this.playerSim.reset();
       this.session.phase = 'green';    // sin semáforo: la cuenta atrás de 3 s la lleva el host
     }
     this.drivers = this.session.entries.map((e, k) => e.isAi
@@ -97,6 +106,11 @@ export class RaceController {
 
   // Un paso fijo para todos: entrada del jugador + IA. Devuelve todos los eventos.
   step(playerInput: DriverInput, playerCommands: readonly DriverCommand[]): RaceEvent[] {
+    return this.stepHumans([playerInput], [playerCommands]);
+  }
+
+  // Un paso fijo con la entrada de cada jugador local (índice = jugador) + IA.
+  stepHumans(inputs: readonly DriverInput[], cmds: readonly (readonly DriverCommand[])[]): RaceEvent[] {
     const rs = this.session, n = rs.entries.length;
     for (let k = 0; k < n; k++) {
       const c = rs.entries[k].sim.state.car, sn = this.snaps[k];
@@ -104,7 +118,10 @@ export class RaceController {
     }
     for (let k = 0; k < n; k++) {
       const drv = this.drivers[k];
-      if (!drv) { this.inputs[k] = playerInput; this.commands[k] = playerCommands as DriverCommand[]; continue; }
+      if (!drv) {
+        const hi = Math.max(0, this.humanIds.indexOf(k));
+        this.inputs[k] = inputs[hi] ?? inputs[0]; this.commands[k] = (cmds[hi] ?? []) as DriverCommand[]; continue;
+      }
       const out = drv.read(rs.entries[k].sim.state, this.snaps.filter((o) => o.id !== k), { phase: rs.phase, gapAheadS: rs.gapAheadOf(k) });
       this.inputs[k] = out.input; this.commands[k] = out.commands;
     }
@@ -118,9 +135,10 @@ export class RaceController {
   }
 
   // Eventos del coche del jugador (sin la etiqueta `car`), para audio, avisos y cronometraje del host.
-  playerEvents(events: readonly RaceEvent[]): SimEvent[] {
+  playerEvents(events: readonly RaceEvent[], human = 0): SimEvent[] {
     const out: SimEvent[] = [];
-    for (const e of events) if ('car' in e && e.type !== 'finish' && e.car === this.playerId) {
+    const id = this.humanIds[human] ?? this.playerId;
+    for (const e of events) if ('car' in e && e.type !== 'finish' && e.car === id) {
       const { car: _car, ...ev } = e as SimEvent & { car: number };
       out.push(ev as SimEvent);
     }
@@ -144,9 +162,10 @@ export class RaceController {
   standings(): Standing[] { return this.session.standings(); }
 
   // Posición del jugador (1..N).
-  playerPos(): number {
+  playerPos(human = 0): number {
     const st = this.session.standings();
-    return st.find((s) => s.id === this.playerId)?.pos ?? 1;
+    const id = this.humanIds[human] ?? this.playerId;
+    return st.find((s) => s.id === id)?.pos ?? 1;
   }
 
   // Resumen para la API de depuración.

@@ -32,3 +32,13 @@ describe('Sonido de rivales (b14 D7)', () => {
     expect(v).toEqual([null, null]);
   });
 });
+
+import { nearestRivalsMulti } from '../src/audio/rivals';
+
+describe('nearestRivalsMulti (b15 D5)', () => {
+  it('los más cercanos a cualquiera de los jugadores', () => {
+    const rivals = [{ id: 1, cur: { x: 10, z: 0 } }, { id: 2, cur: { x: 500, z: 0 } }, { id: 3, cur: { x: 1003, z: 0 } }, { id: 4, cur: { x: 60, z: 0 } }];
+    expect(nearestRivalsMulti([{ x: 0, z: 0 }, { x: 1000, z: 0 }], rivals, 200, 2)).toEqual([3, 1]);
+    expect(nearestRivalsMulti([{ x: 0, z: 0 }], rivals, 200, 2)).toEqual([1, 4]);
+  });
+});

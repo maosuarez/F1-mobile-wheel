@@ -22,6 +22,10 @@ export interface DebugSnapshot {
   // Carrera (b14 D7); en práctica mode = 'practice' y una sola fila
   race: { mode: string; phase: string; lightsOn: number; playerPos: number; standings: Standing[] };
   rivalDrawCalls: number; rivalsVisible: number; rivalVoices: number[];
+  // Jugadores locales (b15): nº, sombra compartida (null con 1 jugador) y estado por jugador (índice 0 = J1)
+  players: number; shadowShared: boolean | null;
+  pilots: { index: number; entryId: number; room: string | null; wheelLink: string; source: string; speedKmh: number; s: number; d: number;
+    gear: number; lap: number; pos: number; input: DriverInput; camera: string; warn: string }[];
 }
 
 // Expone window.__f1 (solo lectura) únicamente con ?debug=1

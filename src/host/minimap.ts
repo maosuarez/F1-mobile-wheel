@@ -11,7 +11,8 @@ const RIVAL_R = 3.5;
 export const MINIMAP_FALLBACK_PX = 256;   // tamaño interno si el canvas no tiene layout (VR)
 
 // Rival a pintar (b14): pose actual y escudería (índice en `teamColors`)
-export interface MinimapRival { team: number; cur: { x: number; z: number } }
+// color: fuerza el color del punto (el otro jugador local en pantalla dividida, b15 D4)
+export interface MinimapRival { team: number; cur: { x: number; z: number }; color?: string }
 
 // Punto (x derecha, y adelante) en metros en el sistema del coche; mismo convenio que buildMinimapPath
 export function minimapPoint(car: { x: number; z: number; yaw: number }, x: number, z: number): { x: number; y: number } {
@@ -29,7 +30,8 @@ export class Minimap {
   private visible = true;
   private ver = 0;
 
-  constructor(private readonly track: Track, private readonly canvasEl: HTMLCanvasElement) {
+  // carColor: color del punto propio (con 2 jugadores, el color de J1/J2)
+  constructor(private readonly track: Track, private readonly canvasEl: HTMLCanvasElement, private readonly carColor = '#35e07a') {
     this.ctx = canvasEl.getContext('2d');
     this.path = createMinimapPath(config.minimap);
     this.minDtMs = 1000 / config.minimap.redrawHz;
@@ -87,13 +89,13 @@ export class Minimap {
       const px = cx + q.x * scale, py = cy - q.y * scale;
       ctx.beginPath();
       ctx.arc(px, py, RIVAL_R * k, 0, Math.PI * 2);
-      ctx.fillStyle = teamColors[r.team] ?? '#ffffff'; ctx.fill();
+      ctx.fillStyle = r.color ?? teamColors[r.team] ?? '#ffffff'; ctx.fill();
       ctx.lineWidth = 1.5 * k; ctx.strokeStyle = '#0a0c10'; ctx.stroke();
     }
 
     ctx.beginPath();
     ctx.arc(cx, cy, CAR_R * k, 0, Math.PI * 2);
-    ctx.fillStyle = '#35e07a'; ctx.fill();
+    ctx.fillStyle = this.carColor; ctx.fill();
     ctx.lineWidth = 2 * k; ctx.strokeStyle = '#0a0c10'; ctx.stroke();
     ctx.restore();
     this.ver++;

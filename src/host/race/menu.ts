@@ -3,7 +3,7 @@ import type { RaceChoice } from '../storage';
 // Menú de modo (b14 D7): Modo, Dificultad y Rivales (1–9). La lógica (modelo, acciones de teclado/mando/volante) es pura
 // y testeable; RaceMenu solo pinta el DOM y resuelve la promesa con la elección.
 
-export type MenuRow = 'mode' | 'ai' | 'rivals';
+export type MenuRow = 'mode' | 'ai' | 'rivals' | 'players';
 // prev/next: cambia de fila; dec/inc: cambia el valor de la fila (con vuelta en modo y dificultad); cycle: siguiente valor con vuelta;
 // confirm: empezar
 export type MenuAction = 'prev' | 'next' | 'dec' | 'inc' | 'cycle' | 'confirm';
@@ -11,13 +11,16 @@ export interface MenuModel { choice: RaceChoice; row: number }
 
 export const MODES: readonly RaceChoice['mode'][] = ['practice', 'race'];
 export const LEVELS: readonly RaceChoice['ai'][] = ['easy', 'medium', 'hard'];
+export const PLAYER_OPTIONS = [1, 2] as const;
 export const MIN_RIVALS = 1, MAX_RIVALS = 9;
 const MODE_LABEL: Record<RaceChoice['mode'], string> = { practice: 'Práctica', race: 'Carrera 5 vueltas' };
 const LEVEL_LABEL: Record<RaceChoice['ai'], string> = { easy: 'Fácil', medium: 'Media', hard: 'Difícil' };
 
 // Filas visibles: en práctica no hay rivales ni dificultad
+// 'players' (b15) solo aparece si la elección lo define (el menú siempre lo fija)
 export function menuRows(c: RaceChoice): MenuRow[] {
-  return c.mode === 'race' ? ['mode', 'ai', 'rivals'] : ['mode'];
+  const rows: MenuRow[] = c.mode === 'race' ? ['mode', 'ai', 'rivals'] : ['mode'];
+  return c.players === undefined ? rows : [...rows, 'players'];
 }
 
 const wrap = (i: number, n: number) => ((i % n) + n) % n;
@@ -27,6 +30,7 @@ function shiftValue(c: RaceChoice, row: MenuRow, d: number): RaceChoice {
     case 'mode': return { ...c, mode: MODES[wrap(MODES.indexOf(c.mode) + d, MODES.length)] };
     case 'ai': return { ...c, ai: LEVELS[wrap(LEVELS.indexOf(c.ai) + d, LEVELS.length)] };
     case 'rivals': return { ...c, rivals: Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, c.rivals + d)) };
+    case 'players': return { ...c, players: c.players === 2 ? 1 : 2 };
   }
 }
 
@@ -39,6 +43,7 @@ export function menuSet(m: MenuModel, row: MenuRow, value: string | number): Men
   const c = { ...m.choice };
   if (row === 'mode' && (value === 'practice' || value === 'race')) c.mode = value;
   else if (row === 'ai' && (value === 'easy' || value === 'medium' || value === 'hard')) c.ai = value;
+  else if (row === 'players') { if (value === 1 || value === 2 || value === '1' || value === '2') c.players = Number(value) as 1 | 2; }
   else if (row === 'rivals') c.rivals = Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, Math.round(Number(value)) || MIN_RIVALS));
   const rows = menuRows(c);
   return { choice: c, row: Math.max(0, Math.min(rows.indexOf(row), rows.length - 1)) };
@@ -113,10 +118,10 @@ export class MenuPad {
   }
 }
 
-const ROW_TITLE: Record<MenuRow, string> = { mode: 'Modo', ai: 'Dificultad', rivals: 'Rivales' };
+const ROW_TITLE: Record<MenuRow, string> = { mode: 'Modo', ai: 'Dificultad', rivals: 'Rivales', players: 'Jugadores' };
 
 export class RaceMenu {
-  private model: MenuModel = { choice: { mode: 'practice', ai: 'medium', rivals: 9 }, row: 0 };
+  private model: MenuModel = { choice: { mode: 'practice', ai: 'medium', rivals: 9, players: 1 }, row: 0 };
   private done: ((c: RaceChoice) => void) | null = null;
   private timer = 0;
   private readonly onKey = (e: KeyboardEvent) => {
@@ -139,7 +144,7 @@ export class RaceMenu {
 
   // Muestra el menú y resuelve con la elección al confirmar
   choose(initial: RaceChoice): Promise<RaceChoice> {
-    this.model = { choice: { ...initial }, row: 0 };
+    this.model = { choice: { ...initial, players: initial.players ?? 1 }, row: 0 };
     this.render();
     return new Promise((resolve) => {
       this.done = resolve;
@@ -171,6 +176,7 @@ export class RaceMenu {
       mode: MODES.map((m) => btn('mode', m, MODE_LABEL[m], choice.mode === m)).join(''),
       ai: LEVELS.map((l) => btn('ai', l, LEVEL_LABEL[l], choice.ai === l)).join(''),
       rivals: Array.from({ length: MAX_RIVALS }, (_, i) => btn('rivals', i + 1, String(i + 1), choice.rivals === i + 1)).join(''),
+      players: PLAYER_OPTIONS.map((n) => btn('players', n, String(n), choice.players === n)).join(''),
     };
     const rowsHtml = rows.map((r, i) =>
       `<div class="menu-row" data-focus="${i === row}"><span class="menu-k">${ROW_TITLE[r]}</span><div class="menu-opts">${opts[r]}</div></div>`).join('');

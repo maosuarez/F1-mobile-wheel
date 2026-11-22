@@ -1,21 +1,37 @@
 import { hudModel, LED_COUNT, type HudModel } from './hudModel';
 import type { SimState } from '../sim/types';
 
-const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
-
-// DOM solo cuando cambia el valor mostrado
-export class Hud {
-  private readonly root = document.getElementById('hud')!;
-  private readonly el = {
-    speed: q('hud-speed'), gear: q('hud-gear'), leds: q('hud-leds'), drs: q('hud-drs'), ers: q('hud-ers'), ersPct: q('hud-ers-pct'),
-    ot: q('hud-ot'), auto: q('hud-auto'), warn: q('hud-warn'),
-    lap: q('hud-lap'), lapTime: q('hud-laptime'), last: q('hud-last'), best: q('hud-best'), delta: q('hud-delta'),
-    sectors: [q('hud-sector-0'), q('hud-sector-1'), q('hud-sector-2')],
+// HUD de un jugador sobre su contenedor (#hud-p1, #hud-p2; b15 D4). DOM solo cuando cambia el valor mostrado
+export class HudView {
+  private readonly el: {
+    speed: HTMLElement; gear: HTMLElement; leds: HTMLElement; drs: HTMLElement; ers: HTMLElement; ersPct: HTMLElement;
+    ot: HTMLElement; auto: HTMLElement; warn: HTMLElement; lap: HTMLElement; lapTime: HTMLElement; last: HTMLElement;
+    best: HTMLElement; delta: HTMLElement; sectors: HTMLElement[]; racePos: HTMLElement | null;
   };
-  private readonly leds = Array.from(this.el.leds.querySelectorAll<HTMLElement>('.led'));
+  private readonly leds: HTMLElement[];
   private readonly cache = new Map<string, string>();
 
+  constructor(private readonly root: HTMLElement) {
+    const q = (id: string) => root.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+    this.el = {
+      speed: q('hud-speed'), gear: q('hud-gear'), leds: q('hud-leds'), drs: q('hud-drs'), ers: q('hud-ers'), ersPct: q('hud-ers-pct'),
+      ot: q('hud-ot'), auto: q('hud-auto'), warn: q('hud-warn'),
+      lap: q('hud-lap'), lapTime: q('hud-laptime'), last: q('hud-last'), best: q('hud-best'), delta: q('hud-delta'),
+      sectors: [q('hud-sector-0'), q('hud-sector-1'), q('hud-sector-2')],
+      racePos: root.querySelector<HTMLElement>('[data-testid="hud-racepos"]'),
+    };
+    this.leds = Array.from(this.el.leds.querySelectorAll<HTMLElement>('.led'));
+  }
+
   show(v: boolean): void { this.root.hidden = !v; }
+
+  // Posición y vuelta propias en pantalla dividida ("P4/10 · V 2/5"); null la oculta
+  setRace(text: string | null): void {
+    const e = this.el.racePos;
+    if (!e) return;
+    if (e.hidden !== (text === null)) e.hidden = text === null;
+    if (text !== null) this.text('racePos', e, text);
+  }
 
   private text(key: string, e: HTMLElement, v: string): void {
     if (this.cache.get(key) !== v) { this.cache.set(key, v); e.textContent = v; }

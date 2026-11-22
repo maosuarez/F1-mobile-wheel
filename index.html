@@ -8,8 +8,11 @@
 <body>
   <a class="open-wheel" data-testid="open-wheel" href="/wheel/" hidden>Usar este celular como volante</a>
   <canvas id="game"></canvas>
+  <div id="split-fx" class="split-fx" data-testid="split-fx" hidden><i class="sv sv-p1"></i><i class="sv sv-p2"></i></div>
   <div id="hud" hidden>
+   <div id="hud-p1" class="hud-view" data-testid="hud-p1">
     <section class="hud-times" aria-label="Tiempos">
+      <div class="t-race"><b class="hud-tag" data-testid="hud-tag">J1</b><span data-testid="hud-racepos" hidden></span></div>
       <div class="t-row"><span class="t-k">Vuelta</span><span class="t-v" data-testid="hud-lap">1</span></div>
       <div class="t-row t-main"><span class="t-k">Tiempo</span><span class="t-v" data-testid="hud-laptime">-:--.---</span></div>
       <div class="t-row"><span class="t-k">Delta</span><span class="t-v" data-testid="hud-delta" data-tone="none"></span></div>
@@ -32,13 +35,16 @@
         <div class="ers-bar"><div class="ers-fill" data-testid="hud-ers"></div></div></div>
     </section>
     <canvas class="hud-minimap" data-testid="hud-minimap" aria-hidden="true"></canvas>
+   </div>
+   <div id="hud-p2" class="hud-view" data-testid="hud-p2" hidden></div>
   </div>
   <div id="overlay-pairing" class="overlay pairing" data-testid="pairing" hidden>
     <div class="pairing-card">
       <canvas class="pairing-qr" data-testid="pairing-qr" width="320" height="320"></canvas>
       <div class="pairing-info">
-        <div class="pairing-label">Volante</div>
+        <div class="pairing-label"><span class="pairing-tag" data-testid="pairing-tag-p1" hidden>J1</span>Volante</div>
         <div class="pairing-code" data-testid="pairing-code">----</div>
+        <div class="pairing-status" data-testid="pairing-status-p1" data-ok="0" hidden>Esperando volante</div>
         <div class="pairing-hint" data-testid="pairing-hint"></div>
         <div class="pairing-relay" data-testid="pairing-relay" hidden>Volante no disponible: el relay no responde. Puedes jugar con teclado pulsando Enter.</div>
         <div class="pairing-enter">Pulsa <kbd>Enter</kbd> para jugar con teclado</div>
@@ -46,12 +52,20 @@
         <div id="attribution" class="attribution" data-testid="attribution" hidden></div>
       </div>
     </div>
+    <div class="pairing-card" data-testid="pairing-p2" hidden>
+      <canvas class="pairing-qr" data-testid="pairing-qr-p2" width="320" height="320"></canvas>
+      <div class="pairing-info">
+        <div class="pairing-label"><span class="pairing-tag p2">J2</span>Volante</div>
+        <div class="pairing-code" data-testid="pairing-code-p2">----</div>
+        <div class="pairing-status" data-testid="pairing-status-p2" data-ok="0">Esperando volante</div>
+      </div>
+    </div>
   </div>
   <div id="overlay-wheel-lost" class="overlay pairing" data-testid="overlay-wheel-lost" hidden>
     <div class="pairing-card">
       <canvas class="pairing-qr" data-testid="wheel-lost-qr" width="220" height="220"></canvas>
       <div class="pairing-info">
-        <div class="pairing-label">Volante desconectado</div>
+        <div class="pairing-label" data-testid="wheel-lost-label">Volante desconectado</div>
         <div class="pairing-code" data-testid="wheel-lost-code">----</div>
         <div class="pairing-hint">Vuelve a abrir el volante en el celular para continuar</div>
       </div>

@@ -50,3 +50,20 @@ describe('menú de modo (b14 D7)', () => {
     expect(padMenuActions([], pressed(9, 14))).toEqual(['dec', 'confirm']);
   });
 });
+
+describe('fila Jugadores (b15)', () => {
+  const withP: MenuModel = { choice: { mode: 'race', ai: 'medium', rivals: 9, players: 1 }, row: 0 };
+  it('solo aparece si la elección define players, siempre al final', () => {
+    expect(menuRows({ mode: 'race', ai: 'medium', rivals: 9 })).toEqual(['mode', 'ai', 'rivals']);
+    expect(menuRows(withP.choice)).toEqual(['mode', 'ai', 'rivals', 'players']);
+    expect(menuRows({ ...withP.choice, mode: 'practice' })).toEqual(['mode', 'players']);
+  });
+  it('alterna 1 | 2 y menuSet lo fija', () => {
+    const m = menuStep({ ...withP, row: 3 }, 'cycle');
+    expect(m.choice.players).toBe(2);
+    expect(menuStep(m, 'inc').choice.players).toBe(1);
+    expect(menuSet(withP, 'players', 2).choice.players).toBe(2);
+    expect(menuSet(withP, 'players', '2').choice.players).toBe(2);
+    expect(menuSet(withP, 'players', 7).choice.players).toBe(1);
+  });
+});

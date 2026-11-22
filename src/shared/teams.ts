@@ -6,6 +6,9 @@ import { config } from './config';
 export interface Driver { name: string; code: string }   // code: 3 letras
 export interface Team { name: string; primary: string; accent: string; drivers: [Driver, Driver] }
 
+// Segundo jugador humano local (b15): comparte la escudería 0 pero no su identidad de compañero de IA.
+export const PLAYER2_DRIVER: Driver = { name: 'Jugador 2', code: 'JG2' };
+
 export const TEAMS: readonly Team[] = [
   { name: 'Escudería del jugador', primary: config.carVisual.colors.primary, accent: config.carVisual.colors.accent,
     drivers: [{ name: 'Jugador', code: 'JUG' }, { name: 'Tomás Arrieta', code: 'ARR' }] },

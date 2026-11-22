@@ -37,6 +37,12 @@ export function findStandardPad(list: ArrayLike<GamepadLike | null>): GamepadLik
   return null;
 }
 
+// Mando estándar en un índice fijo del arreglo del navegador (jugador N en pantalla dividida)
+export function findPadAt(list: ArrayLike<GamepadLike | null>, index: number): GamepadLike | null {
+  const p = list[index];
+  return p && p.connected && p.mapping === 'standard' ? p : null;
+}
+
 const snapshot = (p: GamepadLike): GamepadState => ({
   axes: Array.from(p.axes),
   buttons: Array.from(p.buttons, (b) => ({ pressed: b.pressed, value: b.value })),
@@ -52,14 +58,21 @@ export class GamepadSource implements InputSource {
   private present = false;
   private readonly hold: HoldDetector = holdDetector(config.race.restartHoldMs);
 
-  constructor(private readonly provider: GamepadProvider, private readonly cfg: GameConfig['gamepad'] = config.gamepad) {}
+  // padIndex: índice fijo en navigator.getGamepads() (null = el primer mando estándar, como siempre)
+  constructor(private readonly provider: GamepadProvider, private readonly cfg: GameConfig['gamepad'] = config.gamepad,
+    private readonly padIndex: number | null = null) {}
+
+  private findPad(): GamepadLike | null {
+    const list = this.provider() ?? [];
+    return this.padIndex === null ? findStandardPad(list) : findPadAt(list, this.padIndex);
+  }
 
   // true si en la última lectura había un mando estándar conectado
   connected(): boolean { return this.present; }
 
   pollUi(dtMs = 0): GamepadEvent[] {
     let pad: GamepadLike | null = null;
-    try { pad = findStandardPad(this.provider() ?? []); } catch { pad = null; }
+    try { pad = this.findPad(); } catch { pad = null; }
     this.present = pad !== null;
     if (!pad) {
       this.prev = EMPTY_GAMEPAD_STATE;
@@ -80,7 +93,7 @@ export class GamepadSource implements InputSource {
   // Vibración del mando; sin actuador o ante cualquier fallo no hace nada
   rumble(kind: FxKey): void {
     try {
-      const pad = findStandardPad(this.provider() ?? []);
+      const pad = this.findPad();
       const fx = RUMBLE[kind];
       const act = pad?.vibrationActuator as { playEffect?: (t: string, p: object) => unknown } | null | undefined;
       const r = act?.playEffect?.('dual-rumble', { startDelay: 0, ...fx });

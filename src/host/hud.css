@@ -111,3 +111,40 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 .results-table tr[data-player="1"] td { background: rgba(53,224,122,.2); font-weight: 800; }
 .results-table td.fastest { color: #c9a3ff; font-weight: 800; }
 .results-actions { display: flex; gap: 14px; }
+
+/* Emparejamiento de 2 jugadores (b15): dos tarjetas con etiqueta J1/J2 y su color */
+.overlay.pairing { flex-wrap: wrap; gap: 40px; }
+.overlay.pairing[data-players="2"] .pairing-qr { max-width: min(240px, 38vw); }
+.overlay.pairing[data-players="2"] .pairing-code { font-size: 52px; }
+.pairing-tag { display: inline-block; margin-right: 10px; padding: 2px 10px; border-radius: 6px; background: #ff8a3d; color: #10131a; font-weight: 800; letter-spacing: .05em; }
+.pairing-tag.p2 { background: #4cc3ff; }
+.pairing-status { font-size: 16px; font-weight: 600; color: #ffb347; }
+.pairing-status[data-ok="1"] { color: #6be58a; }
+
+/* Pantalla dividida (b15 D3/D4): HUD por mitad (J1 arriba, J2 abajo), torre compartida en el borde derecho,
+   viñeta CSS por mitad (sin compositor) y línea divisoria */
+.hud-view { position: absolute; inset: 0; }
+.t-race { display: none; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.hud-tag { padding: 1px 8px; border-radius: 5px; background: #ff8a3d; color: #10131a; font-weight: 800; letter-spacing: .05em; font-size: .85em; }
+#hud-p2 .hud-tag { background: #4cc3ff; }
+.t-race span { font-weight: 800; font-size: 1.1em; }
+#hud.split .t-race { display: flex; }
+#hud.split #hud-p1 { bottom: 50%; }
+#hud.split #hud-p2 { top: 50%; }
+#hud.split section, #hud.split .hud-minimap { zoom: .72; }
+#hud.split .hud-warn { top: 18%; font-size: clamp(18px,1.8vw,32px); }
+#hud.split .hud-energy { right: calc(clamp(170px,13vw,230px) / .72 + 3 * clamp(12px,1.5vw,28px)); }
+#hud.split .hud-minimap { right: calc(clamp(170px,13vw,230px) / .72 + 3 * clamp(12px,1.5vw,28px) + clamp(200px,16vw,280px) + 24px);
+  bottom: clamp(12px,1.5vw,28px); width: clamp(140px,11vw,200px); height: clamp(140px,11vw,200px); }
+.race-hud.split { top: 50%; transform: translateY(-50%); z-index: 2; }
+.rh-tower li[data-local="1"] { background: rgba(76,195,255,.22); box-shadow: inset 0 0 0 1px #4cc3ff; }
+.race-hud.split .rh-tower li[data-local="0"] { background: rgba(255,138,61,.22); box-shadow: inset 0 0 0 1px #ff8a3d; }
+.race-hud.split .rh-head, .race-hud.split .rh-gaps { display: none; }
+.split-fx { position: fixed; inset: 0; pointer-events: none; }
+.split-fx .sv { position: absolute; left: 0; right: 0; height: 50%; background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.42) 100%); }
+.sv-p1 { top: 0; border-bottom: 2px solid #0a0c10; box-sizing: border-box; }
+.sv-p2 { bottom: 0; border-top: 2px solid #0a0c10; box-sizing: border-box; }
+.res-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 4px; background: #ff8a3d; color: #10131a; font-size: .8em; }
+.res-tag[data-local="1"] { background: #4cc3ff; }
+.results-table.split tr[data-local="0"] td { background: rgba(255,138,61,.2); }
+.results-table.split tr[data-local="1"] td { background: rgba(76,195,255,.2); }

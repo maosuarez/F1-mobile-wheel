@@ -182,3 +182,19 @@ describe('GamepadSource.rumble', () => {
     expect(() => new GamepadSource(() => [rej as GamepadLike]).rumble('limiter')).not.toThrow();
   });
 });
+
+describe('GamepadSource con índice fijo (b15)', () => {
+  it('solo lee el mando de su índice', () => {
+    const a = makePad(''), b = makePad('standard');
+    const list: (GamepadLike | null)[] = [{ ...a.pad, mapping: 'standard' }, b.pad];
+    const s0 = new GamepadSource(() => list, undefined, 0), s1 = new GamepadSource(() => list, undefined, 1);
+    s0.pollUi(16); s1.pollUi(16);
+    expect(s0.connected()).toBe(true); expect(s1.connected()).toBe(true);
+    const only1 = new GamepadSource(() => [null, b.pad], undefined, 0);
+    only1.pollUi(16);
+    expect(only1.connected()).toBe(false);                  // el mando está en el índice 1, no en el 0
+    const sNull = new GamepadSource(() => [null, b.pad]);
+    sNull.pollUi(16);
+    expect(sNull.connected()).toBe(true);                   // sin índice: primer mando estándar (como antes)
+  });
+});
