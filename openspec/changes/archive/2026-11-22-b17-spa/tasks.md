@@ -14,4 +14,4 @@
 
 ## 4. Cierre (Fable)
 
-- [ ] 4.1 Revisión visual, `npx vitest run`, `npm run build`, `code-review-graph build` + `detect_changes`; commits `feat(track): circuito de Spa-Francorchamps` y `feat(host): selector de circuito` vía `commit-orchestrator`; `/opsx:archive b17-spa`.
+- [x] 4.1 Revisión visual, `npx vitest run`, `npm run build`, `code-review-graph build` + `detect_changes`; commits `feat(track): circuito de Spa-Francorchamps` y `feat(host): selector de circuito` vía `commit-orchestrator`; `/opsx:archive b17-spa`.
