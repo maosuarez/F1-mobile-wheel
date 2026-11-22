@@ -11,7 +11,7 @@
 
 ## 3. Verificación (worker-sonnet)
 
-- [ ] 3.1 E2E `tests/e2e/b18_monza.py` (puertos limpios): carrera automática completa en Monza; capturas en Rettifilo, Lesmo, Ascari, Curva Alboreto y recta con el anillo al fondo; Interlagos y Singapur siguen cargando; draw calls ≤ 200; sin errores de consola.
+- [ ] 3.1 E2E `tests/e2e/b18_monza.py` (puertos limpios): carrera automática completa en Monza; capturas en Rettifilo, Lesmo, Ascari, Curva Alboreto y recta con el anillo al fondo; Interlagos y Spa siguen cargando; draw calls ≤ 200; sin errores de consola.
 
 ## 4. Cierre (Fable)
 
