@@ -3,6 +3,7 @@ import { config } from '../shared/config';
 import { loadTrack } from '../track/load';
 import { loadWorld, terrainHeight } from '../track/world';
 import type { Simulation } from '../sim/simulation';
+import type { RaceEvent } from '../sim/race';
 import { RaceController, parseRaceOptions, raceOptionDefaults, type RaceOptions } from './race/controller';
 import { RivalsRender } from '../render/rivals';
 import { RivalAudio } from '../audio/rivals';
@@ -50,8 +51,10 @@ import { parsePlayers, assignSources, keyboardLayoutFor, PLAYER_COLORS, PLAYER_L
 import { capQuality } from './split/layout';
 import { SplitRenderer } from './split/render';
 import { PairingUi, shouldShowWheelButton, wheelUrl, type RelayInfo } from './pairing';
+import { onlineGrid } from './online/client';
+import { LobbyView, gridTeams, nameCode, parseOnlineParams, resStandings, type LobbyResult } from './online/lobby';
 
-type GameState = 'loading' | 'menu' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
+type GameState = 'loading' | 'menu' | 'lobby' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
 type PauseReason = 'user' | 'hidden' | 'wheelLost';
 
 const params = new URLSearchParams(window.location.search);
@@ -79,6 +82,7 @@ function setState(s: GameState): void {
   $('overlay-wheel-lost').hidden = !(s === 'paused' && pauseReason === 'wheelLost');
   $('overlay-error').hidden = s !== 'error';
   $('overlay-menu').hidden = s !== 'menu';
+  $('overlay-lobby').hidden = s !== 'lobby';
   $('overlay-results').hidden = s !== 'results';
   if (s !== 'results') resultsHide?.();
 }
@@ -166,20 +170,40 @@ async function start(): Promise<void> {
   const menuUi = new RaceMenu($('overlay-menu'), () => [
     ...(wheel ? wheelMenuActions(wheel.takeCommands(), wheel.takeUiEvents()) : []), ...menuPad.poll()]);
   const skipMenu = ['mode', 'rivals', 'ai', 'seed', 'players'].some((k) => params.has(k)) || useAutopilot || (debug && params.get('menu') !== '1');
+  // Online (b16): `online=create|join` (parámetros en online/lobby.ts) abre el vestíbulo sin menú; no con players=2
+  const urlOnline = parsePlayers(params) === 2 ? null : parseOnlineParams(params);
   const chooseRaceOptions = async (skip: boolean): Promise<RaceOptions> => {
+    if (urlOnline && skip) return { mode: 'online', ...raceOptionDefaults(params) };
     if (skip) return parseRaceOptions(params) ?? { mode: 'practice', ...raceOptionDefaults(params) };
     setState('menu');
-    const saved = raceOpts ?? loadRaceChoice() ?? { mode: 'practice', ai: 'medium', rivals: config.race.defaultRivals };
+    const prev = raceOpts && raceOpts.mode !== 'online' ? { mode: raceOpts.mode, ai: raceOpts.ai, rivals: raceOpts.rivals } : null;
+    const saved = prev ?? loadRaceChoice() ?? { mode: 'practice', ai: 'medium', rivals: config.race.defaultRivals };
     const c = await menuUi.choose({ ...saved, players: urlPlayers ?? loadRaceChoice()?.players ?? 1 });
-    saveRaceChoice(c);
+    const { online: wantsOnline, ...choice } = c;
+    saveRaceChoice(choice);
     players = c.players === 2 ? 2 : 1;
+    if (wantsOnline) return { mode: 'online', rivals: c.rivals, ai: c.ai, seed: raceOptionDefaults(params).seed };
     return { mode: c.mode, rivals: c.rivals, ai: c.ai, seed: raceOptionDefaults(params).seed };
+  };
+  // Vestíbulo online: tras "Online" en el menú (o la URL). "Volver" regresa al menú
+  const lobby = new LobbyView($('overlay-lobby'), config);
+  let online = null as LobbyResult | null;
+  const chooseWithLobby = async (skip: boolean): Promise<RaceOptions> => {
+    for (;;) {
+      const o = await chooseRaceOptions(skip);
+      if (o.mode !== 'online') return o;
+      setState('lobby');
+      const r = await lobby.run({ params: skip ? urlOnline : null, track: track.id, laps: config.race.laps,
+        seed: () => raceOptionDefaults(params).seed, wheelCode: room0 ? room0.room : null });
+      if (r) { online = r; return { mode: 'online', rivals: r.cfg.rivals, ai: r.cfg.ai, seed: r.cfg.seed, laps: r.cfg.laps }; }
+      skip = false;
+    }
   };
   let raceOpts: RaceOptions | null = null;
   // Nº de jugadores locales: URL `players=2` > menú (recordado) > 1. Lo consume el grupo 2 (render dividido)
   const urlPlayers = parsePlayers(params);
   let players: 1 | 2 = urlPlayers ?? 1;
-  raceOpts = await chooseRaceOptions(skipMenu);
+  raceOpts = await chooseWithLobby(skipMenu || urlOnline !== null);
   if (players === 2 && !useAutopilot) {
     ui.setPlayerCount(2);
     openRoom(1);
@@ -189,8 +213,24 @@ async function start(): Promise<void> {
   // Pantalla dividida (b15): con 2 jugadores, una entrada humana, cámara, HUD, minimapa y motor por jugador
   const split = players === 2;
   const nP: number = players;
-  let race = new RaceController(track, raceOpts, config, nP);
-  let towerInfo = towerEntries(race.session.entries);
+  // Online: parrilla común (onlineGrid) con escudería por plaza; el cliente se une a la sesión (D4/D5)
+  let humanSeats: number[] = [];
+  const seatIsHuman = (id: number) => humanSeats.includes(id);
+  const makeRace = (opts: RaceOptions): RaceController => {
+    if (!online || opts.mode !== 'online') return new RaceController(track, opts, config, nP);
+    const c = online.client;
+    const grid = gridTeams(onlineGrid(online.cfg, c.you, c.isOwner, c.players));
+    humanSeats = grid.seats.filter((q) => q.slot !== null).map((q) => q.entryId);
+    const rc = new RaceController(track, opts, config, 1, grid);
+    c.attach(rc.session, grid, track.length);
+    rc.beforeStep = () => c.beforeStep();
+    return rc;
+  };
+  let race = makeRace(raceOpts);
+  // Torre: online, los humanos llevan las 3 primeras letras de su nombre
+  const towerOf = (r: RaceController) => towerEntries(r.session.entries)
+    .map((t, i) => (r.isOnline && r.session.entries[i].kind !== 'ai' && seatIsHuman(i) ? { ...t, code: nameCode(r.session.entries[i].name) } : t));
+  let towerInfo = towerOf(race);
 
   const canvas = $('game') as HTMLCanvasElement;
   const renderer = createRenderer(canvas, debug);
@@ -315,6 +355,7 @@ async function start(): Promise<void> {
   let lostPlayer = 0;     // jugador cuyo volante provocó la pausa 'wheelLost' (b15 D6)
   // Práctica: cuenta atrás de 3 s. Carrera: el semáforo (avanza con los pasos de la simulación)
   const startCountdown = () => {
+    if (race.isOnline) { stepper.reset(); setState('countdown'); return; }   // el semáforo lo da el reloj del servidor
     if (race.isRace) { race.startLights(); stepper.reset(); }
     else countdownEndMs = nowMs() + config.race.countdownS * 1000;
     setState('countdown');
@@ -322,6 +363,7 @@ async function start(): Promise<void> {
   // Cualquiera pausa para ambos (b15 D6)
   const pause = (reason: PauseReason, who = 0) => {
     if (state !== 'racing' && state !== 'countdown') return;
+    if (race.isOnline) return;                    // online no se pausa (la carrera sigue en los demás PCs)
     pausedFrom = state;
     pauseReason = reason;
     if (reason === 'wheelLost') { lostPlayer = who; ui.setLostPlayer(who, split); }
@@ -343,13 +385,13 @@ async function start(): Promise<void> {
   // Sala, fuente y cámara no cambian. En carrera se rehace la sesión con las mismas opciones
   const rebuild = (opts: RaceOptions) => {
     const assists = pilots.map((p) => ({ ...p.sim.assists }));
-    race = new RaceController(track, opts, config, nP);
+    race = makeRace(opts);
     pilots.forEach((p, i) => {
       p.sim = race.humanSims[i];
       p.sim.assists = assists[i];
       p.sim.timer.setBestLap(loadBest(track.id));
     });
-    towerInfo = towerEntries(race.session.entries);
+    towerInfo = towerOf(race);
   };
   const resetCommon = () => {
     for (const p of pilots) { p.bestSectors.fill(null); syncPrev(p); p.gamepad.reset(); }
@@ -357,7 +399,16 @@ async function start(): Promise<void> {
     pauseReason = null;
     startCountdown();
   };
+  // Online: salir de la sala y volver al menú sin los parámetros online (recarga)
+  const leaveOnline = () => {
+    online?.client.close();
+    const q = new URLSearchParams(window.location.search);
+    for (const k of ['online', 'code', 'name', 'autostart', 'laps', 'dropst']) q.delete(k);
+    q.set('menu', '1');
+    window.location.search = q.toString();
+  };
   const restartRace = () => {
+    if (race.isOnline) { if (state === 'results') leaveOnline(); return; }
     if (!(state === 'racing' || state === 'results' || (state === 'paused' && pauseReason === 'user'))) return;
     if (race.isRace) rebuild(raceOpts!);
     else if (split) pilots.forEach((p, i) => p.sim.placeOnGrid(i));   // práctica a 2: plazas 0 y 1 de la parrilla
@@ -368,6 +419,7 @@ async function start(): Promise<void> {
   // con la elección en la URL (la vista dividida se monta al arrancar)
   const goMenu = async () => {
     if (state !== 'results') return;
+    if (race.isOnline) { leaveOnline(); return; }
     const before = players;
     raceOpts = await chooseRaceOptions(false);
     if (players !== before) {
@@ -380,7 +432,10 @@ async function start(): Promise<void> {
     resetCommon();
   };
   const showResults = () => {
-    const rows = resultsModel(race.standings(), race.session.entries, race.playerId, config.race.laps, race.humanIds);
+    // Online: la tabla `res` del propietario (o la clasificación local si no llega en net.resultsWaitS)
+    const res = online && race.isOnline ? online.client.results : null;
+    const standings = res ? resStandings(res.rows) : race.standings();
+    const rows = resultsModel(standings, race.session.entries, race.playerId, race.laps, race.humanIds);
     resultsView.show(rows, restartRace, () => { void goMenu(); });
   };
 
@@ -486,7 +541,7 @@ async function start(): Promise<void> {
       dbg = { steer: r.input.steer, thr: r.input.throttle, brk: r.input.brake, gear: refPilot.suggestedGear(sim.state) };
     }
     const e = w.echo();
-    const raceTel = race.isRace ? { pos: race.playerPos(p.index), laps: config.race.laps } : undefined;
+    const raceTel = race.isRace ? { pos: race.playerPos(p.index), laps: race.laps } : undefined;
     client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg, race: raceTel })));
   };
   // Calidad adaptativa: empieza en high salvo ?quality= o GL por software, nunca vuelve a subir
@@ -602,6 +657,16 @@ async function start(): Promise<void> {
             pos: race.playerPos(p.index), input: { ...p.lastInput }, camera: rigOf(p).debug().mode,
             warn: p.warnings.current(p.sim.state, p.sim.state.t) };
         }),
+        // Online (b16): remoteJumpMaxM = mayor salto de un coche remoto entre fotogramas descontando lo recorrido a su
+        // velocidad media del intervalo (|Δp| − v̄·dt); remoteStepMaxM = mayor |Δp| bruto. lightsOutSrv: apagado en reloj
+        // del servidor; lightsOutTargetSrv: instante objetivo (atSrv + lightsOutAtS); clockErrMs: nowSrv − Date.now()
+        online: online ? (() => {
+          const c = online.client;
+          return { code: c.code, you: c.you, owner: c.owner, players: c.players.map((q) => ({ ...q })), status: c.status,
+            remoteJumpMaxM, remoteStepMaxM, atSrv: c.atSrv, lightsOutSrv, nowSrv: c.clock.nowSrv(), clockErrMs,
+            lightsOutTargetSrv: c.atSrv !== null ? c.atSrv + race.session.lightsOutAtS * 1000 : null,
+            results: c.results ? { official: c.results.official, ids: c.results.rows.map((r) => r.id) } : null };
+        })() : null,
       };
     }, canvas);
   }
@@ -612,8 +677,25 @@ async function start(): Promise<void> {
     window.addEventListener('pagehide', () => { clearInterval(telTimer); for (const p of pilots) p.client?.close(); });
   }
 
+  // Online: abandonos (coche retirado fuera de escena a los net.leaveHideS), cambio de propietario y conexión perdida
+  let lightsOutSrv: number | null = null;     // instante del apagado en reloj del servidor (depuración)
+  let remoteJumpMaxM = 0, remoteStepMaxM = 0;
+  const remoteLast = new Map<number, { x: number; z: number; v: number }>();
+  let clockErrMs: number | null = null;       // nowSrv − Date.now() del último fotograma (en local comparten reloj)
+  if (online) {
+    const c = online.client;
+    const hideRetired = () => window.setTimeout(() => {
+      for (const e of race.session.entries) if (e.retired && e.kind === 'remote') { race.hideCar(e.id); remoteLast.delete(e.id); }
+    }, config.net.leaveHideS * 1000);
+    c.on('leave', (slot) => { ui.toast(`Jugador ${slot + 1} ha abandonado`); hideRetired(); });
+    c.on('owner', () => hideRetired());
+    c.on('close', () => { if (state !== 'results') ui.toast('Conexión online perdida'); });
+    window.addEventListener('pagehide', () => c.close());
+  }
+
   if (useAutopilot && race.isRace) startCountdown();
   else if (useAutopilot) { stepper.reset(); setState('racing'); }
+  else if (race.isOnline) startCountdown();
   else setState('pairing');
 
   const dt = config.sim.dt;
@@ -623,6 +705,21 @@ async function start(): Promise<void> {
   let lastT = performance.now();
   // Bucle único con setAnimationLoop (design D1): también dispara durante una sesión WebXR
   let firstFrame = true;
+  // Eventos de un paso de carrera (o del semáforo online): apagado → carrera, audio, avisos y cronometraje del jugador
+  const handleRaceEvents = (raceEvents: readonly RaceEvent[]) => {
+    if (online && lightsOutSrv === null && race.phase === 'green') lightsOutSrv = online.client.clock.nowSrv();
+    if (state === 'countdown' && race.phase !== 'grid' && race.phase !== 'lights') setState('racing');
+    for (const p of pilots) {
+      for (const ev of race.playerEvents(raceEvents, p.index)) {
+        p.events.push(ev);
+        p.audio.onEvent(ev);
+        p.warnings.push(ev, p.sim.state.t);
+        if (ev.type === 'sector') { const b = p.bestSectors[ev.index]; if (b === null || ev.timeS < b!) p.bestSectors[ev.index] = ev.timeS; }
+        if (ev.type === 'wallHit') { if (p.index === 0) wallHits++; }
+        else if (ev.type === 'lapEnd' && ev.valid && ev.best) saveBest(track.id, ev.timeS);
+      }
+    }
+  };
   const frame = (now: number) => {
     if (firstFrame) { firstFrame = false; lastT = now; }   // igual que el arranque anterior: primer dt = 0
     const frameDt = Math.min((now - lastT) / 1000, 1);
@@ -651,8 +748,19 @@ async function start(): Promise<void> {
       else ui.setCountdown(Math.ceil(left));
     } else ui.setCountdown(null);
 
-    let alpha = 1;
     for (const p of pilots) p.events.length = 0;
+    // Online: reloj, envío de st/ai, resultados y semáforo sincronizado (nowSrv ≥ atSrv, D5)
+    if (online && race.isOnline) {
+      const c = online.client;
+      c.tick();
+      if (race.phase === 'grid' && c.lightsDue()) race.startLights();
+      clockErrMs = c.clock.nowSrv() - Date.now();
+      if (race.phase === 'lights' && c.atSrv !== null) {
+        handleRaceEvents(race.syncLights((c.clock.nowSrv() - c.atSrv) / 1000));
+      }
+    }
+
+    let alpha = 1;
     // Carrera: durante el semáforo también se dan pasos (RaceSession retiene los coches hasta el apagado)
     const stepping = state === 'racing' || (state === 'countdown' && race.isRace);
     if (stepping) {
@@ -665,24 +773,15 @@ async function start(): Promise<void> {
           p.lastInput = inputs[p.index] = p.source.read(dt, p.sim.state);
           cmds[p.index] = p.source.takeCommands();
         }
-        const raceEvents = split ? race.stepHumans(inputs, cmds) : race.step(inputs[0], cmds[0]);
-        if (state === 'countdown' && race.phase !== 'grid' && race.phase !== 'lights') setState('racing');
-        for (const p of pilots) {
-          for (const ev of race.playerEvents(raceEvents, p.index)) {
-            p.events.push(ev);
-            p.audio.onEvent(ev);
-            p.warnings.push(ev, p.sim.state.t);
-            if (ev.type === 'sector') { const b = p.bestSectors[ev.index]; if (b === null || ev.timeS < b!) p.bestSectors[ev.index] = ev.timeS; }
-            if (ev.type === 'wallHit') { if (p.index === 0) wallHits++; }
-            else if (ev.type === 'lapEnd' && ev.valid && ev.best) saveBest(track.id, ev.timeS);
-          }
-        }
+        handleRaceEvents(split ? race.stepHumans(inputs, cmds) : race.step(inputs[0], cmds[0]));
       }
       for (const p of pilots) {
         const c = p.sim.state.car;
         p.cur.x = c.x; p.cur.y = c.y; p.cur.z = c.z; p.cur.yaw = c.yaw;
       }
-      if (race.finished) { showResults(); setState('results'); }
+      // Online: se espera a la tabla `res` (o a la local tras net.resultsWaitS, la decide el cliente)
+      const done = online && race.isOnline ? online.client.results !== null : race.finished;
+      if (done) { showResults(); setState('results'); }
     } else if (state === 'paused') {
       alpha = 1;
     }
@@ -703,6 +802,23 @@ async function start(): Promise<void> {
       g.rotation.set(0, pose.yaw, pc.pitch);
       p.car.update(pc, camDt);
       rigOf(p).update({ ...pose, pitch: pc.pitch, roll: pc.roll }, pc, camDt, p.sim.state.t);
+    }
+    // Remotos: pose muestreada en el instante del render (nowSrv − interpDelayMs); salto máximo entre fotogramas
+    if (online && race.isOnline) {
+      const c = online.client, t = c.clock.nowSrv() - config.net.interpDelayMs;
+      race.sampleRemotes((id) => c.remote(id)?.sample(t) ?? null);
+      const live = state === 'racing' && race.phase !== 'grid' && race.phase !== 'lights';
+      for (const v of race.rivals()) {
+        if (race.session.entries[v.id].kind !== 'remote' || race.session.entries[v.id].retired) continue;
+        const last = remoteLast.get(v.id);
+        if (last && live && frameDt > 0) {
+          const d = Math.hypot(v.cur.x - last.x, v.cur.z - last.z);
+          remoteStepMaxM = Math.max(remoteStepMaxM, d);
+          remoteJumpMaxM = Math.max(remoteJumpMaxM, d - ((last.v + v.speed) / 2) * frameDt * timescale);
+        }
+        if (last) { last.x = v.cur.x; last.z = v.cur.z; last.v = v.speed; }
+        else remoteLast.set(v.id, { x: v.cur.x, z: v.cur.z, v: v.speed });
+      }
     }
     const pose = p1.pose;
     const cs = p1.sim.state.car;
@@ -741,7 +857,7 @@ async function start(): Promise<void> {
     if (inVr && vrPanel) {
       const sim = p1.sim;
       const raceInfo = (): PanelRace => ({ pos: race.playerPos(), total: race.session.entries.length,
-        lap: race.session.lapsDone(race.playerId) + 1, laps: config.race.laps });
+        lap: race.session.lapsDone(race.playerId) + 1, laps: race.laps });
       const screen: PanelScreen = state === 'pairing' ? { kind: 'pairing', room: ui.roomText, hint: ui.hintText }
         : state === 'countdown' ? { kind: 'countdown', n: Number(countdownNumber()) }
         : state === 'paused' ? { kind: 'paused' }
@@ -754,11 +870,11 @@ async function start(): Promise<void> {
     if (!lights.hidden) lights.querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i < race.lightsOn));
     const raceHud = race.isRace && (state === 'racing' || state === 'countdown' || state === 'paused');
     tower.show(raceHud);
-    if (raceHud) tower.update(() => race.standings(), towerInfo, race.playerId, config.race.laps, performance.now(), race.humanIds);
+    if (raceHud) tower.update(() => race.standings(), towerInfo, race.playerId, race.laps, performance.now(), race.humanIds);
     // Posición y vuelta propias en cada mitad (a la frecuencia de la torre)
     if (split && now - raceTextMs >= 1000 / TOWER_HZ) {
       raceTextMs = now;
-      const total = race.session.entries.length, laps = config.race.laps;
+      const total = race.session.entries.length, laps = race.laps;
       for (const p of pilots) p.hud.setRace(raceHud
         ? `P${race.playerPos(p.index)}/${total} · V ${Math.min(laps, race.session.lapsDone(race.humanIds[p.index]) + 1)}/${laps}` : null);
     }

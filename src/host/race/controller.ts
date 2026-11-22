@@ -1,17 +1,20 @@
 import { config as defaultConfig, type GameConfig } from '../../shared/config';
 import { driverAt, PLAYER2_DRIVER } from '../../shared/teams';
-import { RaceSession, type RaceEvent, type RacePhase, type Standing } from '../../sim/race';
+import { RaceSession, type RaceEntrySpec, type RaceEvent, type RacePhase, type RemotePose, type Standing } from '../../sim/race';
 import { RivalDriver, rivalSkill, type AiLevel, type CarSnapshot } from '../../sim/rival';
 import type { Simulation } from '../../sim/simulation';
-import type { DriverCommand, DriverInput, SimEvent } from '../../sim/types';
+import { NEUTRAL_INPUT, type DriverCommand, type DriverInput, type SimEvent } from '../../sim/types';
 import type { Track } from '../../track/types';
 
 // Controlador de carrera del host (b14 D7): encapsula RaceSession y da al bucle de main.ts el Simulation del jugador
 // (`playerSim`) más los rivales para render, audio y minimapa. En práctica: RaceSession de 1 entrada, colocada como
 // antes (s = start − startOffsetM, d = 0), en verde desde el principio y sin final (comportamiento previo intacto).
 
-export type RaceMode = 'practice' | 'race';
-export interface RaceOptions { mode: RaceMode; rivals: number; ai: AiLevel; seed: number }
+export type RaceMode = 'practice' | 'race' | 'online';
+// laps: vueltas de la carrera (online: las de la cfg del propietario); por defecto config.race.laps
+export interface RaceOptions { mode: RaceMode; rivals: number; ai: AiLevel; seed: number; laps?: number }
+// Parrilla online (b16): entradas en el orden común y entrada del jugador local (de onlineGrid)
+export interface OnlineEntries { entries: readonly RaceEntrySpec[]; localId: number }
 
 const AI_LEVELS: readonly AiLevel[] = ['easy', 'medium', 'hard'];
 
@@ -53,39 +56,52 @@ export class RaceController {
   readonly humanSims: readonly Simulation[];
   private readonly cfg: GameConfig;
   private readonly drivers: (RivalDriver | null)[];
-  private readonly views: RivalView[];
+  private views: RivalView[];
   private readonly snaps: CarSnapshot[];
   private readonly inputs: DriverInput[];
   private readonly commands: DriverCommand[][];
 
+  // Ejecutado en cada paso tras guardar la pose anterior y antes de session.step (online: OnlineClient.beforeStep)
+  beforeStep: (() => void) | null = null;
+
   // humans: jugadores locales (1 o 2). Con 2, J2 sale en la plaza siguiente a J1 y la parrilla no pasa de 10 coches.
-  constructor(track: Track, opts: RaceOptions, cfg: GameConfig = defaultConfig, humans = 1) {
+  // online (modo 'online'): parrilla común de onlineGrid; un solo jugador local (humans se ignora).
+  constructor(track: Track, opts: RaceOptions, cfg: GameConfig = defaultConfig, humans = 1, online?: OnlineEntries) {
     this.opts = opts;
     this.track = track;
+    cfg = opts.laps !== undefined && opts.laps !== cfg.race.laps ? { ...cfg, race: { ...cfg.race, laps: opts.laps } } : cfg;
     this.cfg = cfg;
-    const race = opts.mode === 'race';
-    const h = Math.max(1, Math.min(2, Math.round(humans)));
-    const n = race ? h + Math.max(1, Math.min(10 - h, opts.rivals)) : h;
-    this.playerId = race ? Math.min(cfg.race.playerGridSlot, n - h) : 0;
-    this.humanIds = Array.from({ length: h }, (_, i) => this.playerId + i);
-    // Plaza k de la parrilla: los jugadores son los pilotos 0 (y 1); los rivales toman los siguientes por orden de parrilla
-    let next = h;
-    const entries = Array.from({ length: n }, (_, k) => {
-      const hi = this.humanIds.indexOf(k);
-      const { team, driver } = hi === 1 ? { team: 0, driver: PLAYER2_DRIVER } : driverAt(hi >= 0 ? hi : next++);
-      return { name: driver.name, team, isAi: hi < 0 };
-    });
+    const race = opts.mode !== 'practice';
+    let entries: RaceEntrySpec[];
+    if (opts.mode === 'online' && online) {
+      this.playerId = online.localId;
+      this.humanIds = [online.localId];
+      entries = online.entries.map((e) => ({ ...e }));
+    } else {
+      const h = Math.max(1, Math.min(2, Math.round(humans)));
+      const n = race ? h + Math.max(1, Math.min(10 - h, opts.rivals)) : h;
+      this.playerId = race ? Math.min(cfg.race.playerGridSlot, n - h) : 0;
+      this.humanIds = Array.from({ length: h }, (_, i) => this.playerId + i);
+      // Plaza k de la parrilla: los jugadores son los pilotos 0 (y 1); los rivales toman los siguientes por orden de parrilla
+      let next = h;
+      entries = Array.from({ length: n }, (_, k) => {
+        const hi = this.humanIds.indexOf(k);
+        const { team, driver } = hi === 1 ? { team: 0, driver: PLAYER2_DRIVER } : driverAt(hi >= 0 ? hi : next++);
+        return { name: driver.name, team, isAi: hi < 0 };
+      });
+    }
     this.session = new RaceSession(track, entries, cfg, opts.seed);
     this.humanSims = this.humanIds.map((id) => this.session.entries[id].sim);
     this.playerSim = this.humanSims[0];
     if (!race) {
       // 1 jugador: misma colocación que antes de b14 (d = 0); 2 jugadores: plazas 0 y 1 de la parrilla
-      if (h === 1) this.playerSim.reset();
+      if (this.humanIds.length === 1) this.playerSim.reset();
       this.session.phase = 'green';    // sin semáforo: la cuenta atrás de 3 s la lleva el host
     }
     this.drivers = this.session.entries.map((e, k) => e.isAi
       ? new RivalDriver(track, rivalSkill(opts.ai, opts.seed * 101 + k, cfg), opts.seed * 977 + k, cfg) : null);
-    this.views = this.session.entries.filter((e) => e.isAi).map((e) => {
+    // Coches que no conduce un jugador local (IA local, IA remota y humanos remotos) se dibujan como rivales
+    this.views = this.session.entries.filter((e) => !this.humanIds.includes(e.id)).map((e) => {
       const c = e.sim.state.car;
       return { id: e.id, team: e.team, prev: { x: c.x, y: c.y, z: c.z, yaw: c.yaw }, cur: { x: c.x, y: c.y, z: c.z, yaw: c.yaw },
         pitch: c.pitch, speed: 0, vLong: 0, steerAngle: 0, rpm: c.rpm, throttle: 0, limiter: false };
@@ -95,7 +111,11 @@ export class RaceController {
     this.commands = this.session.entries.map(() => []);
   }
 
-  get isRace(): boolean { return this.opts.mode === 'race'; }
+  // Online también es una carrera (semáforo, torre, final)
+  get isRace(): boolean { return this.opts.mode !== 'practice'; }
+  get isOnline(): boolean { return this.opts.mode === 'online'; }
+  // Vueltas de la carrera
+  get laps(): number { return this.cfg.race.laps; }
   get phase(): RacePhase { return this.session.phase; }
   get lightsOn(): number { return this.session.lightsOn; }
   // La carrera ha terminado para todos (nunca en práctica).
@@ -103,6 +123,9 @@ export class RaceController {
 
   // Enciende el semáforo (solo carrera, desde parrilla).
   startLights(): void { if (this.isRace) this.session.startLights(); }
+
+  // Online (b16 D5): semáforo según el reloj del servidor (s desde atSrv). Devuelve lightsOut al pasar a verde.
+  syncLights(elapsedS: number): RaceEvent[] { return this.isRace ? this.session.syncLights(elapsedS) : []; }
 
   // Un paso fijo para todos: entrada del jugador + IA. Devuelve todos los eventos.
   step(playerInput: DriverInput, playerCommands: readonly DriverCommand[]): RaceEvent[] {
@@ -118,6 +141,7 @@ export class RaceController {
     }
     for (let k = 0; k < n; k++) {
       const drv = this.drivers[k];
+      if (!drv && rs.entries[k].kind === 'remote') { this.inputs[k] = NEUTRAL_INPUT; this.commands[k] = []; continue; }
       if (!drv) {
         const hi = Math.max(0, this.humanIds.indexOf(k));
         this.inputs[k] = inputs[hi] ?? inputs[0]; this.commands[k] = (cmds[hi] ?? []) as DriverCommand[]; continue;
@@ -129,6 +153,7 @@ export class RaceController {
       const c = rs.entries[v.id].sim.state.car;
       v.prev.x = c.x; v.prev.y = c.y; v.prev.z = c.z; v.prev.yaw = c.yaw;
     }
+    this.beforeStep?.();
     const events = rs.step(this.inputs, this.commands);
     this.syncViews(false);
     return events;
@@ -156,6 +181,21 @@ export class RaceController {
       if (snap) { v.prev.x = c.x; v.prev.y = c.y; v.prev.z = c.z; v.prev.yaw = c.yaw; }
       v.pitch = c.pitch; v.speed = c.speed; v.vLong = c.vLong; v.steerAngle = c.steerAngle;
       v.rpm = c.rpm; v.throttle = c.throttle; v.limiter = c.limiter;
+    }
+  }
+
+  // Quita un coche de la escena (online: retirado, D6). Deja de dibujarse, sonar y verse en el minimapa.
+  hideCar(id: number): void { this.views = this.views.filter((v) => v.id !== id); }
+
+  // Coches remotos con la pose muestreada en el instante del render (sin interpolar entre pasos): prev = cur = pose.
+  sampleRemotes(sample: (id: number) => RemotePose | null): void {
+    for (const v of this.views) {
+      const e = this.session.entries[v.id];
+      if (e.kind !== 'remote' || e.retired) continue;
+      const p = sample(v.id);
+      if (!p) continue;
+      v.prev.x = v.cur.x = p.x; v.prev.y = v.cur.y = p.y; v.prev.z = v.cur.z = p.z; v.prev.yaw = v.cur.yaw = p.yaw;
+      v.pitch = p.pitch; v.speed = p.v; v.vLong = p.v; v.steerAngle = p.steer;
     }
   }
 

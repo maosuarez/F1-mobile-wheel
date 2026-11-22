@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ROOM_ALPHABET, ROOM_LENGTH, decodeAtHost, decodeAtWheel, encode, generateRoomCode, isRoomCode, sanitizeRoomInput,
-  type EvMsg, type FxMsg, type InMsg, type TelMsg,
+  decodeAtRace, decodeNet, type EvMsg, type FxMsg, type InMsg, type LobbyMsg, type NetAi, type NetCar, type NetCfg, type NetRes,
+  type RelayMsg, type TelMsg,
 } from '../src/shared/protocol';
 
 const IN: InMsg = { t: 'in', seq: 42, ts: 123456.789, steer: -0.25, thr: 0.8, brk: 0, ers: true, rtt: 7.5 };
@@ -130,5 +131,51 @@ describe('sanitizeRoomInput', () => {
     expect(sanitizeRoomInput('a1b-0c')).toBe('ABC');
     expect(sanitizeRoomInput('abcdefg')).toBe('ABCD');
     expect(sanitizeRoomInput('')).toBe('');
+  });
+});
+
+describe('protocolo: carrera online (b16)', () => {
+  const CAR: NetCar = { t: 'st', ts: 1700000000123, x: 10.123, y: 1.5, z: -3.25, yaw: 3.14, pitch: 0.01, roll: -0.02, v: 83.4,
+    steer: 0.4, s: 1234.5, d: -1.2, laps: 2, prog: 2.31, drs: 1, fin: false, tt: null, best: 70.123 };
+  const CFG: NetCfg = { t: 'cfg', track: 'interlagos', laps: 5, rivals: 4, ai: 'medium', seed: 12345, grid: [2, 0, 1] };
+  const AI: NetAi = { t: 'ai', ts: 5, cars: [[1, 2, 3, 0.5, 70, 0.1, 100, 0.5, 1, 1.2, false, null, 71.5], [0, 0, 0, 0, 0, 0, 0, 0, 5, 5, true, 400, 70]] };
+  const RES: NetRes = { t: 'res', rows: [{ id: 0, tt: 400.5, laps: 5, best: 70, dnf: false }, { id: 3, tt: null, laps: 2, best: null, dnf: true }] };
+  const wrap = (m: unknown, f = 1) => JSON.stringify({ t: 'r', f, m });
+
+  it('mensajes de juego envueltos en r hacen ida y vuelta', () => {
+    for (const m of [CAR, CFG, AI, RES, { t: 'hello', name: 'Ana', team: 3 } as const, { t: 'start', atSrv: 1700000003000 } as const]) {
+      expect(decodeAtRace(wrap(JSON.parse(encode(m))))).toEqual({ t: 'r', f: 1, m });
+      expect(decodeNet(encode(m))).toEqual(m);
+    }
+  });
+  it('encode redondea a 3 decimales y st cabe en 300 bytes', () => {
+    expect(encode({ ...CAR, x: 1.23456789 })).toContain('"x":1.235');
+    expect(new TextEncoder().encode(encode({ ...CAR, x: -9999.999, s: 99999.999, tt: 9999.999, best: 9999.999 })).length).toBeLessThan(300);
+  });
+  it('lobby y time válidos', () => {
+    const lobby: LobbyMsg = { t: 'lobby', you: 1, owner: 0, players: [{ slot: 0, name: 'A' }, { slot: 1, name: 'B' }] };
+    expect(decodeAtRace(JSON.stringify(lobby))).toEqual(lobby);
+    expect(decodeAtRace('{"t":"time","srv":1700000000000}')).toEqual({ t: 'time', srv: 1700000000000 });
+    expect(decodeAtRace('{"t":"ping"}')).toEqual({ t: 'ping' });
+    expect(encode({ t: 'time' })).toBe('{"t":"time"}');
+  });
+  it('campos fuera de rango se acotan o se rechazan', () => {
+    const c = (decodeNet(JSON.stringify({ ...CAR, steer: 9, v: -5, drs: 7, laps: -2.4 })) as NetCar);
+    expect([c.steer, c.v, c.drs, c.laps]).toEqual([1, 0, 2, 0]);
+    expect(decodeNet(JSON.stringify({ ...CFG, laps: 0 }))).toBeNull();
+    expect(decodeNet(JSON.stringify({ ...CFG, rivals: 10 }))).toBeNull();
+    expect(decodeNet(JSON.stringify({ ...CFG, ai: 'brutal' }))).toBeNull();
+    expect(decodeNet(JSON.stringify({ ...CFG, grid: [6] }))).toBeNull();
+    expect(decodeAtRace(wrap(CAR, 9))).toBeNull();
+    expect(decodeAtRace(JSON.stringify({ t: 'lobby', you: 6, owner: 0, players: [] }))).toBeNull();
+    expect((decodeNet(JSON.stringify({ t: 'hello', name: 'X'.repeat(40), team: 1 })) as { name: string }).name.length).toBe(16);
+  });
+  it('basura devuelve null', () => {
+    for (const raw of ['', 'x', '[]', 'null', '{"t":5}', '{"t":"zzz"}', '{"t":"st"}', '{"t":"ai","ts":1,"cars":[[1]]}',
+      '{"t":"res","rows":[null]}', '{"t":"r","f":1}', '{"t":"r","f":1,"m":"x"}', '{"t":"r","f":1,"m":{"t":"zzz"}}', '{"t":"time","srv":"a"}']) {
+      expect(decodeAtRace(raw)).toBeNull();
+      expect(decodeNet(raw)).toBeNull();
+    }
+    expect(decodeAtRace(JSON.stringify({ t: 'r', f: 0, m: { ...CAR, x: 'a' } } as RelayMsg | object))).toBeNull();
   });
 });

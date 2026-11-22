@@ -20,8 +20,8 @@ export function resultsModel(standings: readonly Standing[], entries: readonly R
   return standings.map((s) => {
     const e = byId.get(s.id)!;
     const down = Math.max(1, laps - s.lapsDone);
-    // Ganador: tiempo total; el resto de los que acabaron: diferencia; sin acabar: vueltas de retraso
-    const time = s.totalTimeS === null ? `+${down} V`
+    // Ganador: tiempo total; el resto de los que acabaron: diferencia; sin acabar: vueltas de retraso; retirado: DNF
+    const time = s.dnf ? 'DNF' : s.totalTimeS === null ? `+${down} V`
       : s.pos === 1 ? formatLapTime(s.totalTimeS) : `+${(s.gapToLeaderS ?? 0).toFixed(3)}`;
     const local = localIds.indexOf(s.id);
     return { pos: s.pos, name: e.name, team: TEAMS[e.team].name, color: TEAMS[e.team].primary, time,

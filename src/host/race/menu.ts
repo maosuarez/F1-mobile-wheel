@@ -8,6 +8,11 @@ export type MenuRow = 'mode' | 'ai' | 'rivals' | 'players';
 // confirm: empezar
 export type MenuAction = 'prev' | 'next' | 'dec' | 'inc' | 'cycle' | 'confirm';
 export interface MenuModel { choice: RaceChoice; row: number }
+// Resultado del menú: la elección, u `online` si se pulsó "Online" (b16 D7: abre el vestíbulo)
+export type MenuResult = RaceChoice & { online?: boolean };
+
+// Online y pantalla dividida no se combinan: con 2 jugadores la opción Online está deshabilitada
+export function menuOnlineEnabled(c: RaceChoice): boolean { return c.players !== 2; }
 
 export const MODES: readonly RaceChoice['mode'][] = ['practice', 'race'];
 export const LEVELS: readonly RaceChoice['ai'][] = ['easy', 'medium', 'hard'];
@@ -122,7 +127,7 @@ const ROW_TITLE: Record<MenuRow, string> = { mode: 'Modo', ai: 'Dificultad', riv
 
 export class RaceMenu {
   private model: MenuModel = { choice: { mode: 'practice', ai: 'medium', rivals: 9, players: 1 }, row: 0 };
-  private done: ((c: RaceChoice) => void) | null = null;
+  private done: ((c: MenuResult) => void) | null = null;
   private timer = 0;
   private readonly onKey = (e: KeyboardEvent) => {
     const a = keyMenuAction(e.code);
@@ -134,16 +139,17 @@ export class RaceMenu {
   // poll: acciones de volante y mando acumuladas desde la última llamada
   constructor(private readonly root: HTMLElement, private readonly poll: () => MenuAction[]) {
     root.addEventListener('click', (e) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-row],[data-start]');
+      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-row],[data-start],[data-online]');
       if (!el || !this.done) return;
       if (el.dataset.start !== undefined) { this.apply('confirm'); return; }
+      if (el.dataset.online !== undefined) { if (menuOnlineEnabled(this.model.choice)) this.finish(true); return; }
       this.model = menuSet(this.model, el.dataset.row as MenuRow, el.dataset.val ?? '');
       this.render();
     });
   }
 
   // Muestra el menú y resuelve con la elección al confirmar
-  choose(initial: RaceChoice): Promise<RaceChoice> {
+  choose(initial: RaceChoice): Promise<MenuResult> {
     this.model = { choice: { ...initial, players: initial.players ?? 1 }, row: 0 };
     this.render();
     return new Promise((resolve) => {
@@ -155,16 +161,18 @@ export class RaceMenu {
 
   private apply(a: MenuAction): void {
     if (!this.done) return;
-    if (a === 'confirm') {
-      const resolve = this.done;
-      this.done = null;
-      window.removeEventListener('keydown', this.onKey, true);
-      window.clearInterval(this.timer);
-      resolve({ ...this.model.choice });
-      return;
-    }
+    if (a === 'confirm') { this.finish(false); return; }
     this.model = menuStep(this.model, a);
     this.render();
+  }
+
+  private finish(online: boolean): void {
+    const resolve = this.done;
+    if (!resolve) return;
+    this.done = null;
+    window.removeEventListener('keydown', this.onKey, true);
+    window.clearInterval(this.timer);
+    resolve(online ? { ...this.model.choice, online: true } : { ...this.model.choice });
   }
 
   private render(): void {
@@ -182,7 +190,8 @@ export class RaceMenu {
       `<div class="menu-row" data-focus="${i === row}"><span class="menu-k">${ROW_TITLE[r]}</span><div class="menu-opts">${opts[r]}</div></div>`).join('');
     this.root.innerHTML = `<div class="menu-card" data-testid="menu">
       <div class="menu-title">Gran Premio</div>${rowsHtml}
-      <button type="button" class="menu-start" data-start data-testid="menu-start">Empezar</button>
+      <div class="menu-actions"><button type="button" class="menu-start" data-start data-testid="menu-start">Empezar</button>
+      <button type="button" class="menu-online" data-online data-testid="menu-online"${menuOnlineEnabled(choice) ? '' : ' disabled title="No disponible con 2 jugadores"'}>Online</button></div>
       <div class="menu-hint">Flechas y Enter · mando: cruceta y Cruz · volante: ▲ fila, ▼ valor, REINICIAR confirma</div></div>`;
   }
 }

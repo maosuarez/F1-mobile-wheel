@@ -87,7 +87,10 @@ export const config = {
             shake: { kerbM: 0.03, grassM: 0.05, surfaceRefKmh: 100, highSpeedM: 0.012, highSpeedKmh: 250, highSpeedRefKmh: 330, hz: [17, 23, 31] as [number, number, number] } },
   fx:     { minGapMs: 80, kerbRepeatMs: 120, grassRepeatMs: 300, limiterRepeatMs: 100, minSpeedKmh: 20 },
   // Red y emparejamiento con el volante (b3, design D4)
-  net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000 },
+  // Carrera online (b16, design D8): raceHz envío st/ai; interpDelayMs/maxExtrapMs interpolación de remotos; resultsWaitS espera de res
+  net:   { telHz: 20, inputStaleMs: 250, inputLostMs: 1000,
+           raceHz: 20, interpDelayMs: 100, maxExtrapMs: 250, remoteMassFactor: 1, raceMax: 6, resultsWaitS: 10, clockPings: 5, clockResyncS: 10,
+           leaveHideS: 2, gridMax: 10 },   // leaveHideS: coche retirado fuera de escena; gridMax: parrilla online (humanos + IA)
   // Carrera (b14, design D8). Distancias en metros, tiempos en s; colisiones: 2 círculos por coche en ±carHalfLenM
   race:  { countdownS: 3, restartHoldMs: 1000,
            laps: 5, lightsIntervalS: 1, lightsHoldMinS: 0.2, lightsHoldMaxS: 3, gapStepM: 50, finishTimeoutS: 60,

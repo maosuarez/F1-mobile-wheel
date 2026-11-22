@@ -45,3 +45,23 @@ export function saveRaceChoice(c: RaceChoice): void {
     // almacenamiento no disponible: se ignora
   }
 }
+
+// Nombre del piloto en el vestíbulo online (b16 D7)
+const NAME_KEY = 'f1mw.onlineName';
+
+export function loadOnlineName(): string | null {
+  try {
+    const v = window.localStorage.getItem(NAME_KEY);
+    return v && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveOnlineName(name: string): void {
+  try {
+    window.localStorage.setItem(NAME_KEY, name);
+  } catch {
+    // almacenamiento no disponible: se ignora
+  }
+}

@@ -52,40 +52,64 @@ function yawKick(c: CarState, rx: number, rz: number, fx: number, fz: number, h:
   c.yaw = wrapAngle(c.yaw - cfg.race.hitYawKick * u);
 }
 
+// Modo de cada coche en la resolución (b16 D4): dinámico, remoto (no se modifica; contacto unilateral) o ignorado.
+export const COLLIDE_DYNAMIC = 0, COLLIDE_REMOTE = 1, COLLIDE_IGNORE = 2;
+
 // Resuelve los contactos entre todos los pares (i < j). Mueve x/z, ajusta velocidades y relocaliza en la pista.
-export function resolveCollisions(cars: readonly CarState[], track: Track, cfg: GameConfig): CarHit[] {
+// modes (opcional, por coche): con un coche remoto se calcula el contacto como entre masas iguales (usando la velocidad
+// estimada del remoto) pero solo se aplica la parte del no remoto, escalada por net.remoteMassFactor; remoto contra
+// remoto e ignorados no se resuelven.
+export function resolveCollisions(cars: readonly CarState[], track: Track, cfg: GameConfig,
+  modes?: ArrayLike<number>): CarHit[] {
   const rc = cfg.race;
   const h = rc.carHalfLenM, r2 = 2 * rc.carRadiusM;
   const reach = 2 * (h + rc.carRadiusM);
   const hits: CarHit[] = [];
   const moved = new Uint8Array(cars.length);
+  const mode = (k: number) => (modes ? modes[k] ?? COLLIDE_DYNAMIC : COLLIDE_DYNAMIC);
   for (let i = 0; i < cars.length; i++) {
+    const mi = mode(i);
+    if (mi === COLLIDE_IGNORE) continue;
     for (let j = i + 1; j < cars.length; j++) {
+      const mj = mode(j);
+      if (mj === COLLIDE_IGNORE || (mi === COLLIDE_REMOTE && mj === COLLIDE_REMOTE)) continue;
       const a = cars[i], b = cars[j];
       if (Math.abs(b.x - a.x) > reach || Math.abs(b.z - a.z) > reach) continue;
       const first = deepest(a, b, h, r2);
       if (!first) continue;
+      // Parte aplicada a cada coche: 1 normal; con un remoto, 0 al remoto y remoteMassFactor al otro
+      const f = cfg.net.remoteMassFactor;
+      const wa = mi === COLLIDE_REMOTE ? 0 : mj === COLLIDE_REMOTE ? f : 1;
+      const wb = mj === COLLIDE_REMOTE ? 0 : mi === COLLIDE_REMOTE ? f : 1;
       // Separación posicional a partes iguales (repetida si queda otro par de círculos solapado)
       let c: ReturnType<typeof deepest> = first;
       for (let k = 0; k < MAX_PUSHES && c; k++) {
         const half = c.over / 2;
-        a.x -= c.nx * half; a.z -= c.nz * half;
-        b.x += c.nx * half; b.z += c.nz * half;
+        a.x -= c.nx * half * wa; a.z -= c.nz * half * wa;
+        b.x += c.nx * half * wb; b.z += c.nz * half * wb;
         c = deepest(a, b, h, r2);
       }
-      moved[i] = 1; moved[j] = 1;
+      if (wa > 0) moved[i] = 1;
+      if (wb > 0) moved[j] = 1;
       // Impulso sobre la velocidad relativa normal (solo si se acercan)
       const vn = (b.vx - a.vx) * first.nx + (b.vz - a.vz) * first.nz;
       if (vn >= 0) continue;
       const jn = (1 + rc.restitution) * -vn / 2;
-      a.vx -= jn * first.nx; a.vz -= jn * first.nz;
-      b.vx += jn * first.nx; b.vz += jn * first.nz;
       const keep = 1 - rc.hitSpeedLoss;
-      a.vx *= keep; a.vz *= keep; b.vx *= keep; b.vz *= keep;
-      syncVelocity(a); syncVelocity(b);
-      yawKick(a, first.rax, first.raz, -jn * first.nx, -jn * first.nz, h, cfg);
-      yawKick(b, first.rbx, first.rbz, jn * first.nx, jn * first.nz, h, cfg);
-      syncVelocity(a); syncVelocity(b);
+      if (wa > 0) {
+        a.vx -= jn * wa * first.nx; a.vz -= jn * wa * first.nz;
+        a.vx *= keep; a.vz *= keep;
+        syncVelocity(a);
+        yawKick(a, first.rax, first.raz, -jn * wa * first.nx, -jn * wa * first.nz, h, cfg);
+        syncVelocity(a);
+      }
+      if (wb > 0) {
+        b.vx += jn * wb * first.nx; b.vz += jn * wb * first.nz;
+        b.vx *= keep; b.vz *= keep;
+        syncVelocity(b);
+        yawKick(b, first.rbx, first.rbz, jn * wb * first.nx, jn * wb * first.nz, h, cfg);
+        syncVelocity(b);
+      }
       hits.push({ a: i, b: j, impulse: jn });
     }
   }
