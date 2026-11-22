@@ -10,10 +10,6 @@
   <main id="wheel" class="wheel">
     <section class="side side-left">
       <button class="paddle" data-testid="paddle-down" type="button" aria-label="Bajar marcha"><span>−</span><small>Marcha</small></button>
-      <div class="actions">
-        <button class="btn btn-act btn-hold" data-testid="btn-ers" type="button">ERS</button>
-        <button class="btn btn-act" data-testid="btn-drs" type="button">DRS</button>
-      </div>
       <div class="pedal pedal-brk" data-testid="pedal-brk" aria-label="Freno"><div class="pedal-fill"></div><span class="pedal-label">FRENO</span></div>
     </section>
 
@@ -57,6 +53,7 @@
   <div class="cover" id="cover-tap" hidden>
     <button class="start" data-testid="tap-start" type="button">Toca para empezar</button>
   </div>
+  <div class="cover cover-cal" id="cover-cal" hidden><button class="start" data-testid="cal-start" type="button">CALIBRAR</button></div>
   <div class="cover" id="cover-noroom" hidden>
     <p class="msg">Escanea el QR del juego para abrir el volante.</p>
     <form class="room-form" id="room-form" autocomplete="off">

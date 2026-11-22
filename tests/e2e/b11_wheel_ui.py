@@ -39,8 +39,10 @@ def main():
             vis = {k: w.locator(f'[data-testid="{k}"]').is_visible() for k in HIDDEN}
             b3.check("vista principal: sin botones secundarios", not any(vis.values()), str(vis))
             for k in ("btn-drs", "btn-ers"):
-                bb = b3.box(w, k)
-                b3.check(f"{k} >= 56x56", bb["width"] >= 56 and bb["height"] >= 56, f"{bb['width']:.0f}x{bb['height']:.0f}")
+                b3.check(f"{k} no existe (b20)", w.locator(f'[data-testid="{k}"]').count() == 0)
+            bh = b3.box(w, "pedal-brk")["height"]
+            vh = w.evaluate("window.innerHeight")
+            b3.check("freno >= 60 % del alto", bh >= 0.6 * vh, f"{bh:.0f}/{vh}")
             mb = b3.box(w, "btn-menu")
             b3.check("btn-menu >= 44x44", mb["width"] >= 44 and mb["height"] >= 44, f"{mb['width']:.0f}x{mb['height']:.0f}")
             w.screenshot(path=SHOT)
@@ -73,11 +75,16 @@ def main():
             w.wait_for_selector('[data-testid="menu-panel"]', state="hidden", timeout=5000)
             b3.check("☰ abre y cierra", True)
 
-            # pedal intacto al tocar DRS con el otro pulgar
+            # pedal intacto al agitar con DRS listo (b20): injectTel drs=1 + dos picos alternos en recta
             t.down(1, *b3.pedal_point(w, "pedal-thr", 0.9))
             host.wait_for_function("window.__f1.snapshot().inputApplied.thr > 0.5", timeout=20000)
             d0 = evs(w, "drs")
-            t.down(2, *b3.center_of(w, "btn-drs")); t.up(2)
+            w.evaluate("""(() => {
+              const W = window.__wheel, t = performance.now();
+              W.injectTel({t: 'tel', spd: 200, gear: 6, rpm: 0, leds: 0, drs: 1, ers: 0.5, ot: false, lap: 1, delta: null, warn: '', echo: 0, hold: 0});
+              W.injectMotion(20, 0, 0, 9.81, 0, t);
+              W.injectMotion(-20, 0, 0, 9.81, 0, t + 150);
+            })()""")
             w.wait_for_function(f"window.__sent.filter(m => m.k === 'drs').length === {d0 + 1}", timeout=5000)
             w.wait_for_timeout(500)
             b3.check("DRS: un único ev drs", evs(w, "drs") == d0 + 1)

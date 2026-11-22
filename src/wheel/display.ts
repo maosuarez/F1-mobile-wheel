@@ -42,6 +42,7 @@ export class Display {
   }
 
   update(t: TelMsg): void {
+    document.body.dataset.vr = t.vr ? '1' : '0';
     this.speed.textContent = String(Math.round(t.spd));
     this.gear.textContent = t.gear === -1 ? 'R' : t.gear === 0 ? 'N' : String(t.gear);
     this.gear.dataset.kind = t.gear === -1 ? 'r' : t.gear === 0 ? 'n' : 'g';

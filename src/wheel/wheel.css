@@ -79,8 +79,6 @@ button { font: inherit; color: inherit; touch-action: none; user-select: none; -
 .strip-info { justify-content: space-between; color: var(--dim); }
 .strip-info b { color: var(--text); font-variant-numeric: tabular-nums; }
 
-.actions { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.btn-act { min-width: 56px; min-height: 56px; font-size: 14px; }
 .strip:not(.strip-info) { overflow: visible; }
 .menu-toggle {
   flex: 0 0 auto; min-width: 44px; min-height: 44px; margin: -12px 0; border: 1px solid var(--line); border-radius: 8px;
@@ -118,3 +116,14 @@ button { font: inherit; color: inherit; touch-action: none; user-select: none; -
 .room-input:focus { outline: none; border-color: var(--red); }
 .room-join { min-height: 64px; min-width: 56px; padding: 0 24px; font: 700 1.2rem/1 inherit; color: #fff; background: var(--red); border: 0; border-radius: 12px; }
 .room-join:disabled { opacity: .4; }
+
+/* Modo VR (b20 D3): sin telemetría; menú siempre visible en rejilla 2x2 */
+body[data-vr="1"] .leds, body[data-vr="1"] .screen, body[data-vr="1"] .strip-info, body[data-vr="1"] .warn,
+body[data-vr="1"] .menu-toggle, body[data-vr="1"] [data-testid="btn-haptics"] { display: none !important; }
+body[data-vr="1"] .center { justify-content: center; }
+body[data-vr="1"] .menu, body[data-vr="1"] .menu[hidden] {
+  display: grid !important; position: static; width: 100%; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0; border: 0; background: none;
+}
+body[data-vr="1"] .menu .btn { min-height: 64px; font-size: 18px; }
+body[data-vr="1"] .btn-restart { font-size: 14px; }
+.cover-cal { z-index: 12; }

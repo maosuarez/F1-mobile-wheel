@@ -21,6 +21,17 @@ describe('buildTel', () => {
     expect(tel.laps).toBe(5);
     expect(new TextEncoder().encode(encode(tel)).length).toBeLessThan(300);
   });
+  it('vr y cal solo si son true', () => {
+    const base = { warn: '', echo: 0, hold: 0 };
+    const none = buildTel(state(50, 2, null), base);
+    expect('vr' in none || 'cal' in none).toBe(false);
+    const off = buildTel(state(50, 2, null), { ...base, vr: false, cal: false });
+    expect('vr' in off || 'cal' in off).toBe(false);
+    const on = buildTel(state(50, 2, null), { ...base, vr: true, cal: true });
+    expect(on.vr).toBe(true);
+    expect(on.cal).toBe(true);
+    expect(new TextEncoder().encode(encode(on)).length).toBeLessThan(300);
+  });
   it('delta null, warn recortado a 24 y hold no negativo', () => {
     const tel = buildTel(state(0, 1, null), { warn: 'W'.repeat(40), echo: 0, hold: -5 });
     expect(tel.delta).toBeNull();

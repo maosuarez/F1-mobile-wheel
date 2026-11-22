@@ -138,7 +138,9 @@ export const config = {
   wheel: { steerSign: 1, rangeDeg: 60, deadzoneDeg: 1.5, curveK: 0.35, flatThreshold: 3,
            oneEuro: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 }, sendHz: 60,
            pedalMode: 'analog' as 'analog' | 'digital', pedalRampMs: 120,
-           haptics: { minGapMs: 80, patterns: { shift: [12], kerb: [25], grass: [40, 30, 40], limits: [120], limiter: [8] } } },
+           haptics: { minGapMs: 80, patterns: { shift: [12], kerb: [25], grass: [40, 30, 40], limits: [120], limiter: [8] } },
+           // b20 design D2: detector de sacudidas (DRS/ERS)
+           shake: { peakMs2: 14, windowMs: 450, peaks: 2, cooldownMs: 900, straightSteer: 0.2, ersOffBrake: 0.3, freezeMs: 350 } },
 };
 
 export type GameConfig = typeof config;

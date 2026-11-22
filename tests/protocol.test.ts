@@ -9,6 +9,28 @@ const IN: InMsg = { t: 'in', seq: 42, ts: 123456.789, steer: -0.25, thr: 0.8, br
 const TEL: TelMsg = { t: 'tel', spd: 287.4, gear: 7, rpm: 11800, leds: 12, drs: 2, ers: 0.6, ot: false,
   lap: 3, delta: -0.125, warn: 'PAUSA', echo: 123456.789, hold: 12.5 };
 
+describe('protocolo: vr/cal (b20), opcionales', () => {
+  it('sin vr/cal no aparecen y el mensaje decodifica igual', () => {
+    expect(encode(TEL)).not.toMatch(/"(vr|cal)"/);
+    const t = decodeAtWheel(encode(TEL)) as TelMsg;
+    expect('vr' in t || 'cal' in t).toBe(false);
+  });
+  it('ida y vuelta con vr y cal', () => {
+    const t = decodeAtWheel(encode({ ...TEL, vr: true, cal: true })) as TelMsg;
+    expect(t.vr).toBe(true);
+    expect(t.cal).toBe(true);
+    const u = decodeAtWheel(encode({ ...TEL, vr: true })) as TelMsg;
+    expect(u.vr).toBe(true);
+    expect('cal' in u).toBe(false);
+  });
+  it('tipo inválido se ignora sin invalidar el mensaje', () => {
+    const t = decodeAtWheel(JSON.stringify({ ...TEL, vr: 1, cal: 'si' })) as TelMsg;
+    expect(t).not.toBeNull();
+    expect('vr' in t || 'cal' in t).toBe(false);
+    expect(t.spd).toBe(287.4);
+  });
+});
+
 describe('protocolo: pos/laps de carrera (b14), compatibles', () => {
   it('un tel sin pos/laps sigue siendo válido y no los inventa', () => {
     const t = decodeAtWheel(encode(TEL)) as TelMsg;

@@ -8,7 +8,6 @@ import { pedalValue } from './pedals';
 export interface ControlCallbacks {
   onThr: (v: number) => void;
   onBrk: (v: number) => void;
-  onErs: (on: boolean) => void;
   onEv: (k: EvKey) => void;
   onRecenter: () => void;
   onHaptics: () => boolean;           // devuelve el nuevo estado
@@ -112,7 +111,6 @@ export function setupControls(cb: ControlCallbacks): void {
   pedal(el('pedal-brk'), cb.onBrk);
   press(el('paddle-up'), () => cb.onEv('up'));
   press(el('paddle-down'), () => cb.onEv('down'));
-  press(el('btn-drs'), () => cb.onEv('drs'));
   const menu = el('menu-panel');
   const toggle = el('btn-menu');
   const setMenu = (open: boolean) => {
@@ -124,7 +122,6 @@ export function setupControls(cb: ControlCallbacks): void {
   press(el('btn-pause'), () => { cb.onEv('pause'); setMenu(false); });
   press(el('btn-center'), () => { cb.onRecenter(); cb.onEv('recal'); setMenu(false); });
   holdButton(el('btn-restart'), config.race.restartHoldMs, () => cb.onEv('restart'));
-  press(el('btn-ers'), () => cb.onErs(true), () => cb.onErs(false));
 
   const vib = el('btn-haptics');
   const paintVib = (on: boolean) => {

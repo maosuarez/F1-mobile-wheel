@@ -1,9 +1,10 @@
 import { config } from '../shared/config';
-import { isRoomCode, sanitizeRoomInput, type FxKey } from '../shared/protocol';
+import { isRoomCode, sanitizeRoomInput, type EvKey, type FxKey, type TelMsg } from '../shared/protocol';
 import { setupControls } from './controls';
 import { Display } from './display';
 import { Haptics } from './haptics';
 import { WheelNet } from './net';
+import { ShakeDetector, shakeAction } from './shake';
 import { SteeringEstimator } from './steering';
 import './wheel.css';
 
@@ -16,6 +17,7 @@ const w = config.wheel;
 
 const display = new Display();
 const estimator = new SteeringEstimator(w);
+const shake = new ShakeDetector(w.shake);
 const vibrations: number[][] = [];
 const haptics = new Haptics(w.haptics, (p) => {
   vibrations.push(Array.isArray(p) ? p : [p]);
@@ -30,6 +32,10 @@ let steer = 0, thr = 0, brk = 0, ers = false;
 let rtt: number | null = null;
 let net: WheelNet | null = null;
 let wasActive = false;
+let lastDrs: 0 | 1 | 2 = 0;
+let calDone = false;
+const evs: EvKey[] = [];
+const sendEv = (k: EvKey): void => { evs.push(k); net?.sendEv(k); };
 
 const LABELS: Record<State, string> = {
   'no-room': 'Sin sala', tap: 'Toca para empezar', connecting: 'Conectando…',
@@ -45,14 +51,47 @@ function setState(s: State): void {
   (document.getElementById('cover-noroom') as HTMLElement).hidden = s !== 'no-room';
 }
 
+// lin: aceleración lineal para el detector; gx/gy: gravedad para el estimador de dirección
+function handleMotion(lin: [number, number, number], withGravity: boolean, gx: number, gy: number, tMs: number): void {
+  const angle = screen.orientation?.angle ?? (window as { orientation?: number }).orientation ?? 90;
+  const s = shake.update(lin[0], lin[1], lin[2], tMs, withGravity);
+  const r = estimator.update(gx, gy, angle, tMs);
+  if (!s.active) steer = r.steer;       // dirección congelada durante la sacudida
+  display.setFlat(r.flat);
+  if (s.shake) {
+    const a = shakeAction(lastDrs, steer, ers, w.shake);
+    if (a === 'drs') sendEv('drs');
+    else if (a === 'ersOn') ers = true;
+    else if (a === 'ersOff') ers = false;
+  }
+}
+
 function onMotion(e: DeviceMotionEvent): void {
   const g = e.accelerationIncludingGravity;
   if (!g || g.x == null || g.y == null) return;
-  const angle = screen.orientation?.angle ?? (window as { orientation?: number }).orientation ?? 90;
-  const r = estimator.update(g.x, g.y, angle, performance.now());
-  steer = r.steer;
-  display.setFlat(r.flat);
+  const a = e.acceleration;
+  const lin = a && a.x != null && a.y != null && a.z != null;
+  handleMotion(lin ? [a.x!, a.y!, a.z!] : [g.x, g.y, g.z ?? 0], !lin, g.x, g.y, performance.now());
 }
+
+const calCover = document.getElementById('cover-cal') as HTMLElement;
+function handleTel(t: TelMsg): void {
+  display.update(t);
+  lastDrs = t.drs;
+  if (!t.cal) { calDone = false; calCover.hidden = true; }
+  else if (!calDone) calCover.hidden = false;
+  rtt = Math.max(0, performance.now() - t.echo - t.hold);
+  display.setRtt(t.echo > 0 ? rtt : null);
+  if (t.echo <= 0) rtt = null;
+}
+calCover.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  estimator.recenter();
+  steer = 0;
+  sendEv('recal');
+  calDone = true;
+  calCover.hidden = true;
+});
 
 // Cada API en su propio try/catch: ninguna impide que el volante funcione
 async function startSensors(): Promise<void> {
@@ -77,24 +116,21 @@ function start(): void {
       else setState('connecting');
     },
     onPeer: (c) => setState(c ? 'active' : wasActive ? 'host-lost' : 'waiting-host'),
-    onTel: (t) => {
-      display.update(t);
-      rtt = Math.max(0, performance.now() - t.echo - t.hold);
-      display.setRtt(t.echo > 0 ? rtt : null);
-      if (t.echo <= 0) rtt = null;
-    },
+    onTel: handleTel,
     onFx: (k: FxKey) => haptics.trigger(k),
   });
   net.connect();
-  window.setInterval(() => net?.sendIn({ steer, thr, brk, ers, rtt }), 1000 / w.sendHz);
+  window.setInterval(() => {
+    if (brk > w.shake.ersOffBrake) ers = false;
+    net?.sendIn({ steer, thr, brk, ers, rtt });
+  }, 1000 / w.sendHz);
   void startSensors();
 }
 
 setupControls({
   onThr: (v) => { thr = v; },
   onBrk: (v) => { brk = v; },
-  onErs: (on) => { ers = on; },
-  onEv: (k) => net?.sendEv(k),
+  onEv: sendEv,
   onRecenter: () => estimator.recenter(),
   onHaptics: () => {
     if (!haptics.supported) return false;
@@ -127,5 +163,9 @@ if (debug) {
     state: () => state,
     lastIn: () => net?.last ?? null,
     vibrations,
+    evs,
+    lastEv: () => evs[evs.length - 1] ?? null,
+    injectMotion: (ax: number, ay: number, az: number, gx: number, gy: number, tMs: number) => handleMotion([ax, ay, az], false, gx, gy, tMs),
+    injectTel: handleTel,
   };
 }

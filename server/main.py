@@ -8,7 +8,8 @@ Protocolo (JSON, una línea por mensaje; espejo de src/shared/protocol.ts):
   ev    volante -> host   evento  k: up | down | drs | cam | pause | recal | restart
   tel   host -> volante   20 Hz   spd, gear(-1=R,0=N,1-8), rpm, leds(0-16), drs(0|1|2), ers[0,1], ot,
                                   lap, delta, warn, echo(último ts recibido), hold(ms), dbg?{steer,thr,brk,gear},
-                                  pos?, laps? (carrera: posición y vueltas totales)
+                                  pos?, laps? (carrera: posición y vueltas totales),
+                                  vr?, cal? (b20: host en VR / pide calibrar; solo si true)
   fx    host -> volante   evento  k: kerb | grass | limits | shift | limiter
   peer  relay -> ambos            role(host|wheel), connected(bool)
   ping  relay -> ambos    cada RELAY_PING_S; pong responde y no se reenvía
