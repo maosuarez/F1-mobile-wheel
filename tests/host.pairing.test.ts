@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pairingHint, shouldShowWheelButton, wheelUrl } from '../src/host/pairing';
+import { joinUrl, pairingHint, shouldShowWheelButton, wheelUrl } from '../src/host/pairing';
 
 describe('wheelUrl', () => {
   it('modo USB: localhost', () => {
@@ -36,11 +36,32 @@ describe('wheelUrl', () => {
   });
 });
 
+const CHROME_ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
+
 describe('shouldShowWheelButton', () => {
-  it('solo en táctil sin Quest/VR', () => {
-    expect(shouldShowWheelButton(true, false)).toBe(true);
-    expect(shouldShowWheelButton(true, true)).toBe(false);
-    expect(shouldShowWheelButton(false, false)).toBe(false);
-    expect(shouldShowWheelButton(false, true)).toBe(false);
+  it('Android con Chrome móvil: visible', () => {
+    expect(shouldShowWheelButton(true, CHROME_ANDROID)).toBe(true);
+  });
+  it('visores VR: oculto', () => {
+    expect(shouldShowWheelButton(true, 'Mozilla/5.0 (X11; Linux x86_64) OculusBrowser/30.0 Chrome/120 VR')).toBe(false);
+    expect(shouldShowWheelButton(true, 'Mozilla/5.0 (Linux; Android 12; Pico 4) PicoBrowser/3.0')).toBe(false);
+  });
+  it('puntero fino: oculto', () => {
+    expect(shouldShowWheelButton(false, CHROME_ANDROID)).toBe(false);
+  });
+});
+
+describe('joinUrl', () => {
+  const loc = { protocol: 'https:', hostname: '192.168.1.20', port: '5173' };
+  it('origen de la página sin public_url', () => {
+    expect(joinUrl(loc, null, 'ABC123', 'spa')).toBe('https://192.168.1.20:5173/?track=spa&online=join&code=ABC123');
+    expect(joinUrl(loc, { lan_ips: [], public_url: null }, 'ABC123', 'spa')).toBe('https://192.168.1.20:5173/?track=spa&online=join&code=ABC123');
+  });
+  it('public_url del relay', () => {
+    expect(joinUrl(loc, { lan_ips: [], public_url: 'https://f1.example.net/' }, 'ABC123', 'bahrain'))
+      .toBe('https://f1.example.net/?track=bahrain&online=join&code=ABC123');
+  });
+  it('codifica código y circuito', () => {
+    expect(joinUrl(loc, null, 'A B&1', 'x/y')).toBe('https://192.168.1.20:5173/?track=x%2Fy&online=join&code=A%20B%261');
   });
 });

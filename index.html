@@ -71,6 +71,22 @@
       </div>
     </div>
   </div>
+  <div id="overlay-qr" class="overlay qr" data-testid="overlay-qr" hidden>
+    <div class="pairing-card">
+      <div class="qr-card" data-testid="qr-wheel-card">
+        <div class="pairing-label">Volante de este PC</div>
+        <canvas class="pairing-qr" data-testid="qr-wheel" width="220" height="220"></canvas>
+        <div class="pairing-code" data-testid="qr-wheel-code">----</div>
+      </div>
+      <div class="qr-card" data-testid="qr-room-card">
+        <div class="pairing-label">Sala</div>
+        <canvas class="pairing-qr" data-testid="qr-room" width="220" height="220"></canvas>
+        <div class="pairing-code" data-testid="qr-room-code">------</div>
+        <div class="pairing-hint" data-testid="qr-room-closed" hidden>Sala cerrada: la carrera ya empezó</div>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="qr-toggle" data-testid="qr-toggle" hidden>QR</button>
   <div id="countdown" class="countdown" data-testid="countdown" hidden></div>
   <div id="race-lights" class="race-lights" data-testid="race-lights" hidden><i></i><i></i><i></i><i></i><i></i></div>
   <section id="race-hud" class="race-hud" data-testid="race-hud" aria-label="Carrera" hidden>

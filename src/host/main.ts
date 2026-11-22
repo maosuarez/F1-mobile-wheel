@@ -52,8 +52,9 @@ import { buildTel } from './net/telemetry';
 import { parsePlayers, assignSources, keyboardLayoutFor, PLAYER_COLORS, PLAYER_LABELS, type PlayerRoom } from './split/players';
 import { capQuality } from './split/layout';
 import { SplitRenderer } from './split/render';
-import { PairingUi, shouldShowWheelButton, wheelUrl, type RelayInfo } from './pairing';
+import { PairingUi, joinUrl, shouldShowWheelButton, wheelUrl, type RelayInfo } from './pairing';
 import { onlineGrid } from './online/client';
+import { QrOverlay } from './online/qrOverlay';
 import { LobbyView, gridTeams, nameCode, parseOnlineParams, resStandings, type LobbyResult } from './online/lobby';
 
 type GameState = 'loading' | 'menu' | 'lobby' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
@@ -75,6 +76,8 @@ let pauseReason: PauseReason | null = null;
 let audioRefs: EngineAudio[] = [];   // un motor por jugador local (b15 D5)
 let resultsHide: (() => void) | null = null;   // quita los atajos de teclado de la tabla de resultados
 
+let onStateChange: (() => void) | null = null;   // b19: visibilidad del botón QR
+
 function setState(s: GameState): void {
   state = s;
   for (const a of audioRefs) a.setPaused(s !== 'racing');
@@ -87,6 +90,7 @@ function setState(s: GameState): void {
   $('overlay-lobby').hidden = s !== 'lobby';
   $('overlay-results').hidden = s !== 'results';
   if (s !== 'results') resultsHide?.();
+  onStateChange?.();
 }
 
 function showError(e: unknown): void {
@@ -126,16 +130,15 @@ async function fetchRelayInfo(): Promise<RelayInfo | null> {
   } catch { return null; }
 }
 
-async function initWheelButton(): Promise<void> {
+// Celular táctil que no es un visor VR (b19 D2): botón fijo y tarjeta del menú
+function initWheelButton(): boolean {
   const btn = document.querySelector<HTMLElement>('[data-testid="open-wheel"]');
-  if (!btn) return;
   const coarse = window.matchMedia('(pointer: coarse) and (hover: none)').matches;
-  if (!coarse) return;
-  let vr = false;
-  try { vr = (await navigator.xr?.isSessionSupported('immersive-vr')) ?? false; } catch { /* sin WebXR */ }
-  btn.hidden = !shouldShowWheelButton(coarse, vr);
+  const phone = shouldShowWheelButton(coarse, navigator.userAgent);
+  if (btn) btn.hidden = !phone;
+  return phone;
 }
-void initWheelButton();
+const isPhone = initWheelButton();
 
 async function start(): Promise<void> {
   // Circuito (b17 D4): ?track= > elección recordada > interlagos. Id desconocido → error con vuelta al menú
@@ -202,7 +205,7 @@ async function start(): Promise<void> {
     const { track: t, ...rest } = c;
     saveRaceChoice(rest);
     if (t) reloadWithTrack(t);
-  });
+  }, { phoneWheel: isPhone });
   const skipMenu = ['mode', 'rivals', 'ai', 'seed', 'players'].some((k) => params.has(k)) || useAutopilot || (debug && params.get('menu') !== '1');
   // Online (b16): `online=create|join` (parámetros en online/lobby.ts) abre el vestíbulo sin menú; no con players=2
   const urlOnline = parsePlayers(params) === 2 ? null : parseOnlineParams(params);
@@ -228,7 +231,7 @@ async function start(): Promise<void> {
       if (o.mode !== 'online') return o;
       setState('lobby');
       const r = await lobby.run({ params: skip ? urlOnline : null, track: track.id, laps: config.race.laps,
-        seed: () => raceOptionDefaults(params).seed, wheelCode: room0 ? room0.room : null,
+        seed: () => raceOptionDefaults(params).seed, joinUrl: (code) => joinUrl(window.location, relayInfo, code, track.id), wheelCode: room0 ? room0.room : null,
         // Cliente con otro circuito que el del propietario: recarga y vuelve a la sala antes del semáforo
         onTrackMismatch: (t, code, name) => reloadWithTrack(t, { online: 'join', code, name, autostart: null }) });
       if (r) { online = r; return { mode: 'online', rivals: r.cfg.rivals, ai: r.cfg.ai, seed: r.cfg.seed, laps: r.cfg.laps }; }
@@ -728,6 +731,24 @@ async function start(): Promise<void> {
     c.on('owner', () => hideRetired());
     c.on('close', () => { if (state !== 'results') ui.toast('Conexión online perdida'); });
     window.addEventListener('pagehide', () => c.close());
+    // Overlay de QR (b19 D4): tecla O o botón; solo online y en countdown/racing/results. No pausa la simulación
+    const qrOverlay = new QrOverlay($('overlay-qr'));
+    const qrBtn = $('overlay-qr').parentElement!.querySelector<HTMLElement>('[data-testid="qr-toggle"]')!;
+    const qrState = () => state === 'countdown' || state === 'racing' || state === 'results';
+    const refreshQr = () => {
+      qrBtn.hidden = !(race.isOnline && qrState());
+      if (!(race.isOnline && qrState())) qrOverlay.hide();
+    };
+    const toggleQr = () => {
+      if (!race.isOnline || !qrState()) return;
+      const w = room0 ? { url: wheelUrl(window.location, relayInfo, room0.room).url, code: room0.room } : null;
+      qrOverlay.set(w, { url: joinUrl(window.location, relayInfo, c.code, track.id), code: c.code, closed: true });
+      qrOverlay.toggle();
+    };
+    onStateChange = refreshQr;
+    refreshQr();
+    qrBtn.addEventListener('click', toggleQr);
+    window.addEventListener('keydown', (e) => { if (e.code === 'KeyO' && !e.repeat) toggleQr(); });
   }
 
   if (useAutopilot && race.isRace) startCountdown();

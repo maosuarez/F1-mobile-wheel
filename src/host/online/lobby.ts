@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import { config as defaultConfig, type GameConfig } from '../../shared/config';
 import { RACE_NAME_MAX, type NetCfg, type NetResRow } from '../../shared/protocol';
 import { driverAt } from '../../shared/teams';
@@ -119,6 +120,7 @@ export interface LobbyRunOptions {
   track: string;
   laps: number;
   seed: () => number;                           // semilla de la carrera (una por vestíbulo)
+  joinUrl?: (code: string) => string;           // b19 D3: URL del QR para unirse a la sala
   wheelCode: string | null;                     // sala del volante de este PC (se empareja como siempre)
   // b17 D4: el propietario eligió otro circuito (cfg.track ≠ track cargado): recargar con ?track= y volver a la sala
   onTrackMismatch?: (track: string, code: string, name: string) => void;
@@ -295,6 +297,8 @@ export class LobbyView {
     const rows = lobbyRows(c.players, c.owner, c.you).map((r) => `<li data-testid="lobby-player" data-slot="${r.slot}" data-you="${r.you ? 1 : 0}">
       <b>${r.slot + 1}</b><span>${esc(r.name)}</span>${r.owner ? '<em>Propietario</em>' : ''}${r.you ? '<em>Tú</em>' : ''}</li>`).join('');
     const status = c.status === 'connecting' ? 'Conectando…' : c.status === 'countdown' ? 'Empezando…' : '';
+    const joinUrl = this.opts?.joinUrl?.(c.code);
+    const qr = joinUrl ? `<div class="lobby-qrbox"><canvas class="lobby-qr" data-testid="lobby-join-qr" width="200" height="200" data-url="${esc(joinUrl)}"></canvas><div class="lobby-wait">Escanea para unirte</div></div>` : '';
     let ctrl: string;
     if (c.isOwner && c.status === 'lobby') {
       const max = maxLobbyRivals(c.players.length, this.cfg), rv = clampLobbyRivals(this.rivals, c.players.length, this.cfg);
@@ -313,7 +317,9 @@ export class LobbyView {
     this.root.innerHTML = `<div class="menu-card lobby-card" data-testid="lobby">
       <div class="menu-title">Sala <span class="lobby-code" data-testid="lobby-room">${esc(c.code)}</span></div>
       ${status ? `<div class="lobby-wait" data-testid="lobby-status">${status}</div>` : ''}
-      <ol class="lobby-players" data-testid="lobby-players">${rows}</ol>${ctrl}${err}${wheel}
+      <ol class="lobby-players" data-testid="lobby-players">${rows}</ol>${ctrl}${qr}${err}${wheel}
       <button type="button" class="menu-opt lobby-back" data-act="back" data-testid="lobby-leave">Salir de la sala</button></div>`;
+    const canvas = this.root.querySelector<HTMLCanvasElement>('.lobby-qr');
+    if (canvas && joinUrl) QRCode.toCanvas(canvas, joinUrl, { width: 200, margin: 2 }).catch(() => {});
   }
 }

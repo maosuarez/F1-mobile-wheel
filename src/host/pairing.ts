@@ -35,9 +35,24 @@ export function pairingHint(mode: WheelUrlMode, port: string): string {
   return 'Escanea el QR o escribe el código en /wheel/';
 }
 
-// Botón fijo "Usar este celular como volante": solo táctil sin hover y sin WebXR immersive-vr (Quest)
-export function shouldShowWheelButton(coarseNoHover: boolean, hasImmersiveVr: boolean): boolean {
-  return coarseNoHover && !hasImmersiveVr;
+// URL para unirse a una sala online (b19 D3): mismo origen que wheelUrl
+export function joinUrl(
+  loc: { protocol: string; hostname: string; port: string },
+  info: RelayInfo | null,
+  code: string,
+  track: string,
+): string {
+  const pub = info?.public_url?.trim();
+  const origin = pub ? pub.replace(/\/+$/, '') : `${loc.protocol}//${loc.hostname}${loc.port ? `:${loc.port}` : ''}`;
+  return `${origin}/?track=${encodeURIComponent(track)}&online=join&code=${encodeURIComponent(code)}`;
+}
+
+// Navegadores de visor VR (b19 D2): no se detectan por WebXR, que Chrome Android también declara
+export const VR_UA_RE = /OculusBrowser|Quest|Pico|Wolvic/i;
+
+// Botón fijo "Usar este celular como volante": solo táctil sin hover y que no sea el navegador de un visor
+export function shouldShowWheelButton(coarseNoHover: boolean, userAgent: string): boolean {
+  return coarseNoHover && !VR_UA_RE.test(userAgent);
 }
 
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;

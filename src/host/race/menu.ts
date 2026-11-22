@@ -132,6 +132,7 @@ export class MenuPad {
   }
 }
 
+const MODE_SUB: Record<RaceChoice['mode'], string> = { practice: 'Vuelta libre, sin rivales', race: 'Salida con semáforo y rivales IA' };
 const ROW_TITLE: Record<MenuRow, string> = { track: 'Circuito', mode: 'Modo', ai: 'Dificultad', rivals: 'Rivales', players: 'Jugadores' };
 
 export class RaceMenu {
@@ -149,7 +150,8 @@ export class RaceMenu {
   // poll: acciones de volante y mando acumuladas desde la última llamada
   // onTrack: el jugador eligió otro circuito (b17 D4): quien llama recarga la página con ?track=
   constructor(private readonly root: HTMLElement, private readonly poll: () => MenuAction[],
-              private readonly onTrack: (c: MenuChoice) => void = () => {}) {
+              private readonly onTrack: (c: MenuChoice) => void = () => {},
+              private readonly opts: { phoneWheel?: boolean } = {}) {
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-row],[data-start],[data-online]');
       if (!el || !this.done) return;
@@ -203,20 +205,36 @@ export class RaceMenu {
   private render(): void {
     const { choice, row } = this.model;
     const rows = menuRows(choice);
-    const btn = (r: MenuRow, val: string | number, label: string, on: boolean) =>
-      `<button type="button" class="menu-opt" data-row="${r}" data-val="${val}" data-testid="menu-${r}-${val}" aria-pressed="${on}">${label}</button>`;
+    const attrs = (r: MenuRow, val: string | number, on: boolean) =>
+      `data-row="${r}" data-val="${val}" data-testid="menu-${r}-${val}" aria-pressed="${on}"`;
+    const seg = (r: MenuRow, val: string | number, label: string, on: boolean) =>
+      `<button type="button" class="menu-opt" ${attrs(r, val, on)}>${label}</button>`;
+    const trackCard = (t: (typeof TRACKS)[number]) => {
+      const night = t.lighting === 'night';
+      return `<button type="button" class="menu-opt gp-track" ${attrs('track', t.id, choice.track === t.id)}>
+        <span class="gp-track-name">${t.name}</span><span class="gp-track-country">${t.country}</span>
+        <span class="gp-tag" data-light="${t.lighting}">${night ? 'Noche' : 'Día'}</span></button>`;
+    };
+    const modeCard = (m: RaceChoice['mode']) =>
+      `<button type="button" class="menu-opt gp-mode" ${attrs('mode', m, choice.mode === m)}>
+        <span class="gp-mode-name">${MODE_LABEL[m]}</span><span class="gp-mode-sub">${MODE_SUB[m]}</span></button>`;
     const opts: Record<MenuRow, string> = {
-      track: TRACKS.map((t) => btn('track', t.id, t.name, choice.track === t.id)).join(''),
-      mode: MODES.map((m) => btn('mode', m, MODE_LABEL[m], choice.mode === m)).join(''),
-      ai: LEVELS.map((l) => btn('ai', l, LEVEL_LABEL[l], choice.ai === l)).join(''),
-      rivals: Array.from({ length: MAX_RIVALS }, (_, i) => btn('rivals', i + 1, String(i + 1), choice.rivals === i + 1)).join(''),
-      players: PLAYER_OPTIONS.map((n) => btn('players', n, String(n), choice.players === n)).join(''),
+      track: `<div class="gp-tracks">${TRACKS.map(trackCard).join('')}</div>`,
+      mode: `<div class="gp-modes">${MODES.map(modeCard).join('')}</div>`,
+      ai: `<div class="gp-seg">${LEVELS.map((l) => seg('ai', l, LEVEL_LABEL[l], choice.ai === l)).join('')}</div>`,
+      rivals: `<div class="gp-seg">${Array.from({ length: MAX_RIVALS }, (_, i) => seg('rivals', i + 1, String(i + 1), choice.rivals === i + 1)).join('')}</div>`,
+      players: `<div class="gp-seg">${PLAYER_OPTIONS.map((n) => seg('players', n, String(n), choice.players === n)).join('')}</div>`,
     };
     const rowsHtml = rows.map((r, i) =>
-      `<div class="menu-row" data-focus="${i === row}"><span class="menu-k">${ROW_TITLE[r]}</span><div class="menu-opts">${opts[r]}</div></div>`).join('');
-    this.root.innerHTML = `<div class="menu-card" data-testid="menu">
-      <div class="menu-title">Gran Premio</div>${rowsHtml}
-      <div class="menu-actions"><button type="button" class="menu-start" data-start data-testid="menu-start">Empezar</button>
+      `<div class="menu-row gp-row" data-focus="${i === row}"><span class="menu-k">${ROW_TITLE[r]}</span>${opts[r]}</div>`).join('');
+    const activeTrack = trackById(choice.track ?? this.track ?? '');
+    const phone = this.opts.phoneWheel
+      ? '<a class="gp-phone" data-testid="menu-open-wheel" href="/wheel/">Usar este celular como volante</a>' : '';
+    this.root.innerHTML = `<div class="menu-card gp-card" data-testid="menu">
+      ${phone}
+      <header class="gp-head"><div class="gp-title">Gran Premio</div>${activeTrack ? `<div class="gp-circuit">${activeTrack.name}</div>` : ''}</header>
+      ${rowsHtml}
+      <div class="menu-actions gp-actions"><button type="button" class="menu-start" data-start data-testid="menu-start">Empezar</button>
       <button type="button" class="menu-online" data-online data-testid="menu-online"${menuOnlineEnabled(choice) ? '' : ' disabled title="No disponible con 2 jugadores"'}>Online</button></div>
       <div class="menu-hint">Flechas y Enter · mando: cruceta y Cruz · volante: ▲ fila, ▼ valor, REINICIAR confirma</div></div>`;
   }
