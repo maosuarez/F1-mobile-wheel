@@ -4,6 +4,7 @@ import { KERB_WIDTH_M, KERB_HEIGHT_M, EDGE_LINE_M } from './types';
 import { config } from '../shared/config';
 import { deltaS, sampleAt, wrapS } from './query';
 import { createTrackMaterials, type TrackMaterials } from '../render/trackMaterials';
+import { poolFactor, type Lighting } from '../render/night';
 
 export interface TrackMeshes {
   group: THREE.Group;
@@ -101,7 +102,8 @@ export class Builder {
   }
 }
 
-function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
+// night: charcos de luz de los postes en el color de vértice (b18 D4), sin coste en GPU
+function roadChunk(t: Track, a: number, b: number, night = false): THREE.BufferGeometry {
   const B = new Builder();
   const width = (f: Frame) => f.wl + f.wr;
   // Anillos compartidos (bloque inicial de vértices)
@@ -145,6 +147,17 @@ function roadChunk(t: Track, a: number, b: number): THREE.BufferGeometry {
     B.quad(o0 + 4, o0 + 5, o1 + 4, o1 + 5);   // franja izquierda
   }
   // Los pianos con perfil se dibujan en render/trackside.ts (b13, design D5)
+  if (night) {
+    for (let r = a; r <= b; r++) {
+      const k = poolFactor(r === t.n ? 0 : frames[r - a].s);   // el anillo de cierre repite el 0
+      const g = k * config.night.roadGain;
+      // Asfalto (bordes aR/aL y estaciones de goma) ×roadGain; líneas ×lineGain para seguir más claras que el asfalto
+      const asphalt = [base[r - a], base[r - a] + 1, ...mid[r - a]];
+      const lines = [2, 3, 4, 5].map((j) => base[r - a] + j);
+      for (const id of asphalt) for (let c = 0; c < 3; c++) B.col[id * 3 + c] *= g;
+      for (const id of lines) for (let c = 0; c < 3; c++) B.col[id * 3 + c] *= k * config.night.lineGain;
+    }
+  }
   return B.build(true, true);
 }
 
@@ -241,7 +254,8 @@ function startLine(t: Track, mat: THREE.Material): THREE.Mesh {
   return m;
 }
 
-export function buildTrackMeshes(track: Track, materials: TrackMaterials = createTrackMaterials(), chunks: number = config.render.trackChunks): TrackMeshes {
+export function buildTrackMeshes(track: Track, materials: TrackMaterials = createTrackMaterials(), chunks: number = config.render.trackChunks,
+  lighting: Lighting = 'day'): TrackMeshes {
   const { road, grass, gravel, runoff } = materials;
   const group = new THREE.Group();
   group.name = 'track';
@@ -257,7 +271,7 @@ export function buildTrackMeshes(track: Track, materials: TrackMaterials = creat
   for (let c = 0; c < chunks; c++) {
     const a = Math.floor((c * n) / chunks);
     const b = c === chunks - 1 ? n : Math.floor(((c + 1) * n) / chunks);   // el último incluye el anillo 0
-    add(`road-${c}`, roadChunk(track, a, b), road);
+    add(`road-${c}`, roadChunk(track, a, b, lighting === 'night'), road);
   }
   // Escapatoria por material; el muro antiguo lo sustituyen las barreras de render/trackside.ts
   const [rg, ra, rv] = buildRunoffGeometries(track);

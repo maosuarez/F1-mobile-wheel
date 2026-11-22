@@ -191,6 +191,57 @@
           "recompressed": false
         }
       ]
+    },
+    {
+      "id": "qwantani_night_puresky",
+      "license": "CC0",
+      "res": "1k",
+      "source": "https://polyhaven.com/a/qwantani_night_puresky",
+      "files": [
+        {
+          "map": "hdri",
+          "path": "qwantani_night_puresky/qwantani_night_puresky_1k.hdr",
+          "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/qwantani_night_puresky_1k.hdr",
+          "bytes": 1389258,
+          "source_md5": "e8691211295e505f77c8c3bdcf3055d9",
+          "recompressed": false
+        }
+      ]
+    },
+    {
+      "id": "coast_sand_01",
+      "license": "CC0",
+      "res": "1k",
+      "source": "https://polyhaven.com/a/coast_sand_01",
+      "files": [
+        {
+          "map": "Diffuse",
+          "path": "coast_sand_01/coast_sand_01_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_diff_1k.jpg",
+          "bytes": 305640,
+          "source_md5": "a1e243fc8635806381505c7dc44b192a",
+          "recompressed": true,
+          "jpeg_quality": 85
+        },
+        {
+          "map": "nor_gl",
+          "path": "coast_sand_01/coast_sand_01_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_nor_gl_1k.jpg",
+          "bytes": 478723,
+          "source_md5": "38bbe6863249a3d20d8417c9db207780",
+          "recompressed": true,
+          "jpeg_quality": 92
+        },
+        {
+          "map": "Rough",
+          "path": "coast_sand_01/coast_sand_01_rough_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_rough_1k.jpg",
+          "bytes": 65770,
+          "source_md5": "978aca9e374cf988095392a91d3a4f71",
+          "recompressed": true,
+          "jpeg_quality": 85
+        }
+      ]
     }
   ]
 }

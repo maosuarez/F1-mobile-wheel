@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import interlagos from '../public/track/interlagos.json';
 import spa from '../public/track/spa.json';
+import bahrain from '../public/track/bahrain.json';
 import { menuRows, menuSet, menuStep, type MenuModel } from '../src/host/race/menu';
 import {
   DEFAULT_TRACK_ID, TRACKS, loadTrackChoice, resolveTrackId, saveTrackChoice, trackById, trackUrl,
@@ -18,8 +19,10 @@ function memStorage(): Storage {
 const broken = (): Storage => { throw new Error('SecurityError'); };
 
 describe('catálogo de circuitos (b17 D4)', () => {
-  it('Interlagos y Spa, ids únicos y coherentes con sus track.json', () => {
-    expect(TRACKS.map((t) => t.id)).toEqual(['interlagos', 'spa']);
+  it('Interlagos, Spa y Bahréin, ids únicos y coherentes con sus track.json', () => {
+    expect(TRACKS.map((t) => t.id)).toEqual(['interlagos', 'spa', 'bahrain']);
+    expect(trackById('bahrain')?.id).toBe(bahrain.id);
+    expect(trackById('bahrain')?.name).toBe('Bahréin');
     expect(new Set(TRACKS.map((t) => t.id)).size).toBe(TRACKS.length);
     expect(trackById('interlagos')?.id).toBe(interlagos.id);
     expect(trackById('spa')?.id).toBe(spa.id);
@@ -67,8 +70,8 @@ describe('fila Circuito del menú (b17 D4)', () => {
 
   it('flechas y clic cambian de circuito; ids desconocidos se ignoran', () => {
     expect(menuStep(m, 'inc').choice.track).toBe('spa');
-    expect(menuStep(m, 'dec').choice.track).toBe('spa');
-    expect(menuStep(menuStep(m, 'inc'), 'cycle').choice.track).toBe('interlagos');
+    expect(menuStep(m, 'dec').choice.track).toBe('bahrain');
+    expect(menuStep(menuStep(m, 'inc'), 'cycle').choice.track).toBe('bahrain');
     expect(menuSet(m, 'track', 'spa').choice.track).toBe('spa');
     expect(menuSet(m, 'track', 'xyz').choice.track).toBe('interlagos');
   });

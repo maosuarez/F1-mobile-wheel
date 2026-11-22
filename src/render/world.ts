@@ -6,11 +6,15 @@ import { BUILDING_KINDS, terrainHeight, type BuildingKind, type World } from '..
 import { mulberry32 } from './trackMaterials';
 import { createTreeMeshes, type TreePlacement } from './environment';
 import type { QualitySettings } from './quality';
+import { WINDOW_OFF_V, createWindowTexture, windowUv } from './night';
 
 // Entorno real (b12, design D6): terreno por trozos, edificios extruidos fusionados por tipo, agua,
 // calle de boxes y árboles instanciados en los bosques de OSM. Presupuesto: ≤ 12 draw calls.
 
 export interface WorldMaterials { grass: THREE.Material; road: THREE.Material }
+// Suelo e iluminación del circuito (b18 D5/D4): arena → talud roca; noche → ventanas emisivas en los edificios
+export interface WorldOptions { ground: 'grass' | 'sand'; lighting: 'day' | 'night' }
+const DEFAULT_OPTS: WorldOptions = { ground: 'grass', lighting: 'day' };
 
 const BASE_SINK_M = 1.5;      // las paredes bajan bajo la base para no flotar en laderas
 const WATER_LIFT_M = 0.1;     // agua sobre el terreno, sin z-fighting
@@ -81,7 +85,7 @@ class GeoBuilder {
 
 // --- Terreno ---
 
-function buildTerrain(world: World, grass: THREE.Material): THREE.Mesh[] {
+function buildTerrain(world: World, grass: THREE.Material, steep: THREE.Color = STEEP_COLOR): THREE.Mesh[] {
   const T = world.terrain, UVM = config.surfaces.uvMeters;
   const n = Math.max(1, Math.floor(config.world.terrainChunks));
   const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
@@ -101,7 +105,7 @@ function buildTerrain(world: World, grass: THREE.Material): THREE.Mesh[] {
           // Normal por diferencias centrales; color según pendiente (1 − ny)
           nrm.set(H(i - 1, j) - H(i + 1, j), 2 * T.cell, H(i, j - 1) - H(i, j + 1)).normalize();
           const slope = Math.min(1, Math.max(0, (1 - nrm.y) / 0.13));   // ~30° → tierra
-          c.copy(white).lerp(STEEP_COLOR, slope);
+          c.copy(white).lerp(steep, slope);
           const x = T.x0 + i * T.cell, z = T.z0 + j * T.cell;
           B.vert(x, H(i, j), z, nrm.x, nrm.y, nrm.z, c, x / UVM, z / UVM);
         }
@@ -144,7 +148,9 @@ function standTexture(rnd: () => number): THREE.DataTexture {
 }
 
 // Paredes (una cara plana por arista) + tapa triangulada; color por edificio con ligera variación
-function addBuilding(B: GeoBuilder, track: Track, r: number[], y: number, h: number, base: THREE.Color, crowd: boolean, rnd: () => number): void {
+// windows: UV de ventanas en las paredes (u, v en metros de la rejilla) y techos en la fila apagada (b18 D4)
+function addBuilding(B: GeoBuilder, track: Track, r: number[], y: number, h: number, base: THREE.Color, crowd: boolean, rnd: () => number,
+  windows = false): void {
   const n = r.length / 2, ccw = ringArea(r) > 0;
   const c = base.clone().multiplyScalar(0.88 + rnd() * 0.2);
   const y0 = y - BASE_SINK_M, y1 = y + h;
@@ -168,17 +174,20 @@ function addBuilding(B: GeoBuilder, track: Track, r: number[], y: number, h: num
     }
     const vc = crowd && !face ? c : (crowd ? white : c);
     const su = face ? len / (px * CROWD_TEXEL_M) : 0, sv0 = face ? 1.5 / px : plain, sv1 = face ? sv0 + h / (px * CROWD_TEXEL_M) : plain;
-    const a0 = B.vert(ax, y0, az, ox, 0, oz, vc, 0, sv0), b0 = B.vert(bx, y0, bz, ox, 0, oz, vc, su, sv0);
-    const b1 = B.vert(bx, y1, bz, ox, 0, oz, vc, su, sv1), a1 = B.vert(ax, y1, az, ox, 0, oz, vc, 0, sv1);
+    // Ventanas: la base hundida queda en la fila apagada; la rejilla empieza en y (nivel del suelo)
+    const [wu1, wv1] = windows ? windowUv(len, h) : [su, sv1];
+    const [, wv0] = windows ? windowUv(0, -BASE_SINK_M) : [0, sv0];
+    const a0 = B.vert(ax, y0, az, ox, 0, oz, vc, 0, wv0), b0 = B.vert(bx, y0, bz, ox, 0, oz, vc, wu1, wv0);
+    const b1 = B.vert(bx, y1, bz, ox, 0, oz, vc, wu1, wv1), a1 = B.vert(ax, y1, az, ox, 0, oz, vc, 0, wv1);
     // (b0−a0)×(b1−a0) apunta a (−dz, dx): coincide con la exterior si el anillo es horario
     if (ccw) B.idx.push(a0, b1, b0, a0, a1, b1); else B.idx.push(a0, b0, b1, a0, b1, a1);
   }
   const first = B.count;
-  for (let i = 0; i < n; i++) B.vert(r[2 * i], y1, r[2 * i + 1], 0, 1, 0, c, 0, plain);
+  for (let i = 0; i < n; i++) B.vert(r[2 * i], y1, r[2 * i + 1], 0, 1, 0, c, 0, windows ? WINDOW_OFF_V : plain);
   for (const k of capIndices(r)) B.idx.push(first + k);
 }
 
-function buildBuildings(world: World, track: Track, rnd: () => number): THREE.Mesh[] {
+function buildBuildings(world: World, track: Track, rnd: () => number, night = false): THREE.Mesh[] {
   const W = config.world, out: THREE.Mesh[] = [];
   for (const kind of BUILDING_KINDS) {
     const list = world.buildings.filter((b) => b.kind === kind);
@@ -186,8 +195,14 @@ function buildBuildings(world: World, track: Track, rnd: () => number): THREE.Me
     const crowd = kind === 'grandstand';
     const base = new THREE.Color(W.buildingColors[kind as BuildingKind]);
     const B = new GeoBuilder();
-    for (const b of list) addBuilding(B, track, b.ring, b.y, b.h, base, crowd, rnd);
+    const windows = night && !crowd;
+    for (const b of list) addBuilding(B, track, b.ring, b.y, b.h, base, crowd, rnd, windows);
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, map: crowd ? standTexture(rnd) : null });
+    if (windows) {
+      mat.emissiveMap = createWindowTexture();
+      mat.emissive.set('#ffffff');
+      mat.emissiveIntensity = config.night.windowIntensity;
+    }
     const mesh = new THREE.Mesh(B.build(), mat);
     mesh.name = `buildings-${kind}`;
     mesh.receiveShadow = true;
@@ -284,17 +299,20 @@ export function forestPlacements(world: World, track: Track, count: number, rnd:
   return out;
 }
 
-export function buildWorld(world: World, track: Track, mats: WorldMaterials, settings: Pick<QualitySettings, 'trees'>): THREE.Group {
+export function buildWorld(world: World, track: Track, mats: WorldMaterials, settings: Pick<QualitySettings, 'trees'>,
+  opts: WorldOptions = DEFAULT_OPTS): THREE.Group {
   const rnd = mulberry32(config.environment.seed);
   const group = new THREE.Group();
   group.name = 'world';
   group.userData.trees = settings.trees;
-  group.add(...buildTerrain(world, mats.grass), ...buildBuildings(world, track, rnd));
+  const steep = opts.ground === 'sand' ? new THREE.Color(config.sand.steepColor) : STEEP_COLOR;
+  group.add(...buildTerrain(world, mats.grass, steep), ...buildBuildings(world, track, rnd, opts.lighting === 'night'));
   const water = buildWater(world);
   if (water) group.add(water);
   const pit = buildPitlane(world, mats.road);
   if (pit) group.add(pit);
-  const trees = forestPlacements(world, track, settings.trees, rnd);
+  // Desierto: sin árboles (b18 D5)
+  const trees = forestPlacements(world, track, opts.ground === 'sand' ? 0 : settings.trees, rnd);
   if (trees.length) group.add(...createTreeMeshes(trees, rnd));
   return group;
 }

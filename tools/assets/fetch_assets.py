@@ -22,6 +22,8 @@ ASSETS = [
     ("gravel_floor", "1k", "texture"),
     ("brushed_concrete", "1k", "texture"),
     ("kloofendal_48d_partly_cloudy_puresky", "2k", "hdri"),
+    ("qwantani_night_puresky", "1k", "hdri"),
+    ("coast_sand_01", "1k", "texture"),
 ]
 MAPS = (("Diffuse", "diff"), ("nor_gl", "nor_gl"), ("Rough", "rough"))
 

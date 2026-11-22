@@ -1,9 +1,16 @@
 // Catálogo de circuitos (b17 D4). Cada id tiene /track/<id>.json y /track/<id>.world.json.
-export interface TrackInfo { id: string; name: string; country: string }
+// b18 D2: iluminación, HDRI (id del manifiesto de assets) y suelo por circuito
+export interface TrackInfo {
+  id: string; name: string; country: string;
+  lighting: 'day' | 'night'; hdri: string; ground: 'grass' | 'sand';
+}
+
+const DAY_HDRI = 'kloofendal_48d_partly_cloudy_puresky';
 
 export const TRACKS: TrackInfo[] = [
-  { id: 'interlagos', name: 'Interlagos', country: 'Brasil' },
-  { id: 'spa', name: 'Spa-Francorchamps', country: 'Bélgica' },
+  { id: 'interlagos', name: 'Interlagos', country: 'Brasil', lighting: 'day', hdri: DAY_HDRI, ground: 'grass' },
+  { id: 'spa', name: 'Spa-Francorchamps', country: 'Bélgica', lighting: 'day', hdri: DAY_HDRI, ground: 'grass' },
+  { id: 'bahrain', name: 'Bahréin', country: 'Baréin', lighting: 'night', hdri: 'qwantani_night_puresky', ground: 'sand' },
 ];
 
 export const DEFAULT_TRACK_ID = 'interlagos';

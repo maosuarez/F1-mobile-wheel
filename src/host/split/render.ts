@@ -15,7 +15,7 @@ export class SplitRenderer {
   private plan: ShadowPlan | null = null;
 
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly gs: GameScene, private readonly cfg: GameConfig = config) {
-    this.sunDir = new THREE.Vector3(...cfg.light.sunDir).normalize();
+    this.sunDir = gs.sunDir;   // día: config.light.sunDir; noche: config.night.sunDir (b18 D4)
     const disc = new THREE.CircleGeometry(cfg.split.contactShadowM, 24);
     disc.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false });
@@ -32,7 +32,7 @@ export class SplitRenderer {
   updateShadow(a: Pose2, b: Pose2): void {
     const plan = this.plan = shadowPlan(a, b, this.cfg);
     const sun = this.gs.sun, L = this.cfg.light;
-    const c = shadowCenter(plan.x, plan.y, plan.z, plan.yaw, plan.extentM, sun.shadow.mapSize.x, plan.aheadM, this.center);
+    const c = shadowCenter(plan.x, plan.y, plan.z, plan.yaw, plan.extentM, sun.shadow.mapSize.x, plan.aheadM, this.center, this.sunDir);
     sun.target.position.copy(c);
     sun.position.copy(c).addScaledVector(this.sunDir, L.shadowDistM);
     sun.target.updateMatrixWorld();

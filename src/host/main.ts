@@ -19,6 +19,7 @@ import { AdaptiveQuality, FpsMeter, QUALITY, initialQuality, type QualityLevel, 
 import { buildCar, type CarVisual } from '../render/car';
 import { TrackParticles } from '../render/particles';
 import { PostFx } from '../render/post';
+import { postConfigFor } from '../render/night';
 import { VR_QUALITY } from '../render/vrQuality';
 import { VrSession } from './vr/session';
 import { VrPanel } from './vr/panel';
@@ -139,7 +140,8 @@ void initWheelButton();
 async function start(): Promise<void> {
   // Circuito (b17 D4): ?track= > elección recordada > interlagos. Id desconocido → error con vuelta al menú
   const TRACK_ID = resolveTrackId(params.get('track'), loadTrackChoice());
-  if (!trackById(TRACK_ID)) { showUnknownTrack(TRACK_ID); return; }
+  const trackInfo = trackById(TRACK_ID);
+  if (!trackInfo) { showUnknownTrack(TRACK_ID); return; }
   // Entorno real en paralelo con la pista (b12, design D7): null → entorno procedural
   const [track, world] = await Promise.all([loadTrack(TRACK_ID), loadWorld(TRACK_ID)]);
   if (world) {
@@ -273,7 +275,8 @@ async function start(): Promise<void> {
   const q0 = initialQuality(qualityParam, gpuName);
   // Con 2 jugadores la calidad no pasa de config.split.maxQuality (b15 D3)
   const capLevel = (l: QualityLevel): QualityLevel => (split ? capQuality(l, config.split.maxQuality) : l);
-  const gs = createScene(track, QUALITY[capLevel(q0.level)], world);
+  // Iluminación, HDRI y suelo del circuito (b18 D2): sin cambios para circuitos de día
+  const gs = createScene(track, QUALITY[capLevel(q0.level)], world, trackInfo);
   const { scene, camera } = gs;
   const carVisual = buildCar();
   const car = carVisual.group;
@@ -590,7 +593,7 @@ async function start(): Promise<void> {
   // Partículas (design D6) y posproceso (design D7) según el nivel de calidad
   const particles = new TrackParticles(quality.particles);
   scene.add(particles.points);
-  const post = new PostFx(renderer, scene, camera);
+  const post = new PostFx(renderer, scene, camera, postConfigFor(trackInfo));
   const splitRender = split ? new SplitRenderer(renderer, gs) : null;
   const cams = pilots.map((p) => p.camera);
   // El compositor hace varios render(): el contador de draw calls se reinicia una vez por fotograma
@@ -611,7 +614,7 @@ async function start(): Promise<void> {
   void fetchAssetManifest().then(async (manifest) => {
     const anisotropy = Math.min(config.assets.anisotropy, renderer.capabilities.getMaxAnisotropy());
     // Perfil software (trackMaps = false): texturas de 1k y sin normal maps
-    const opts = { normals: quality.trackMaps, anisotropy, maxPx: quality.trackMaps ? undefined : 1024 };
+    const opts = { normals: quality.trackMaps, anisotropy, maxPx: quality.trackMaps ? undefined : 1024, ground: trackInfo.ground };
     const [tex, sky] = await Promise.all([loadTrackTextures(gs.meshes.materials, opts, manifest), loadHdriSky(gs, manifest)]);
     assets.textures = tex.loaded; assets.failed = tex.failed; assets.hdri = sky;
     if (sky) applyAll();

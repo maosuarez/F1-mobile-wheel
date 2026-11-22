@@ -177,6 +177,7 @@ export function disposeEnvironment(group: THREE.Object3D): void {
     if (m.userData.sharedMaterial) return;
     const mat = m.material as THREE.MeshStandardMaterial;
     mat.map?.dispose();
+    mat.emissiveMap?.dispose();
     mat.dispose();
     (m as unknown as THREE.InstancedMesh).dispose?.();
   });

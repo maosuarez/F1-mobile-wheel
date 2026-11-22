@@ -10,6 +10,8 @@ import { buildEnvironment as buildScenery, disposeEnvironment } from './environm
 import { createSkyDome, createSkyMaterial } from './sky';
 import { buildWorld } from './world';
 import type { World } from '../track/world';
+import type { TrackInfo } from '../shared/tracks';
+import { applyNight, isNight } from './night';
 
 export interface GameScene {
   scene: THREE.Scene;
@@ -22,6 +24,9 @@ export interface GameScene {
   world: World | null;   // entorno real (b12); null → entorno procedural
   trackside: THREE.Group;    // kit de borde de pista (b13)
   hdri: THREE.DataTexture | null;   // cielo HDRI cargado (b13); null → cúpula procedural
+  info: TrackInfo | null;           // iluminación, HDRI y suelo del circuito (b18 D2); null → día con hierba
+  sunDir: THREE.Vector3;            // dirección hacia la luz direccional (config.light o config.night)
+  night: THREE.Group | null;        // postes de luz (b18 D4); null de día
 }
 
 // DPR limitado a config.render.maxDpr; ACES + sRGB y mapa de sombras PCF (design D2)
@@ -41,12 +46,22 @@ export function createRenderer(canvas: HTMLCanvasElement, preserveDrawingBuffer 
 
 // Cielo con degradado, niebla del color del horizonte, sol con sombra, relleno hemisférico, mallas de pista y cámara
 // Entorno real si hay world.json (sin gradas ni silueta procedurales); si no, el procedural de b6
-function buildEnv(track: Track, world: World | null, meshes: TrackMeshes, settings: Pick<QualitySettings, 'trees'>): THREE.Group {
-  // Calle de boxes con el material de escapatoria de asfalto (asphalt_pit_lane, b13 design D7)
-  return world ? buildWorld(world, track, { grass: meshes.materials.grass, road: meshes.materials.runoff }, settings) : buildScenery(track, settings);
+// Árboles efectivos: ninguno en el desierto (b18 D5)
+export function treesFor(settings: Pick<QualitySettings, 'trees'>, info: TrackInfo | null): number {
+  return info?.ground === 'sand' ? 0 : settings.trees;
 }
 
-export function createScene(track: Track, settings: Pick<QualitySettings, 'trees' | 'trackMaps'> = QUALITY.high, world: World | null = null): GameScene {
+function buildEnv(track: Track, world: World | null, meshes: TrackMeshes, settings: Pick<QualitySettings, 'trees'>, info: TrackInfo | null): THREE.Group {
+  const eff = { trees: treesFor(settings, info) };
+  // Calle de boxes con el material de escapatoria de asfalto (asphalt_pit_lane, b13 design D7)
+  return world
+    ? buildWorld(world, track, { grass: meshes.materials.grass, road: meshes.materials.runoff }, eff,
+      { ground: info?.ground ?? 'grass', lighting: info?.lighting ?? 'day' })
+    : buildScenery(track, eff);
+}
+
+export function createScene(track: Track, settings: Pick<QualitySettings, 'trees' | 'trackMaps'> = QUALITY.high, world: World | null = null,
+  info: TrackInfo | null = null): GameScene {
   const L = config.light, S = config.sky;
   const scene = new THREE.Scene();
   const sunDir = new THREE.Vector3(...L.sunDir).normalize();
@@ -55,7 +70,9 @@ export function createScene(track: Track, settings: Pick<QualitySettings, 'trees
   scene.background = null;
   scene.fog = new THREE.Fog(new THREE.Color(S.horizon), config.render.far * S.fogNearFrac, config.render.far * S.fogFarFrac);
   scene.environmentIntensity = L.envIntensity;
-  scene.add(new THREE.HemisphereLight(L.hemiSky, L.hemiGround, L.hemiIntensity));
+  const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, L.hemiIntensity);
+  hemi.name = 'hemi';
+  scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(L.sunColor, L.sunIntensity);
   sun.name = 'sun';
@@ -69,7 +86,7 @@ export function createScene(track: Track, settings: Pick<QualitySettings, 'trees
   sun.castShadow = false; // lo activa applyQuality según QualitySettings.shadows
   scene.add(sun, sun.target);
 
-  const meshes = buildTrackMeshes(track, createTrackMaterials(settings.trackMaps));
+  const meshes = buildTrackMeshes(track, createTrackMaterials(settings.trackMaps, info?.ground ?? 'grass'), undefined, info?.lighting ?? 'day');
   // La pista recibe sombra; solo el coche la proyecta
   meshes.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.receiveShadow = true; });
   scene.add(meshes.group);
@@ -82,11 +99,14 @@ export function createScene(track: Track, settings: Pick<QualitySettings, 'trees
   const trackside = buildTrackside(track, createTracksideMaterials(meshes.materials), settings, world);
   scene.add(trackside);
 
-  const env = buildEnv(track, world, meshes, settings);
+  const env = buildEnv(track, world, meshes, settings, info);
   scene.add(env);
 
   const camera = new THREE.PerspectiveCamera(config.render.fovDeg, 1, config.render.near, config.render.far);
-  return { scene, camera, meshes, sun, sky, track, env, world, trackside, hdri: null };
+  const gs: GameScene = { scene, camera, meshes, sun, sky, track, env, world, trackside, hdri: null, info, sunDir, night: null };
+  // Noche (b18 D4): luces, cielo, niebla y postes; de día no hace nada
+  applyNight(gs, info, track);
+  return gs;
 }
 
 // --- Cielo HDRI (b13, design D7) ---
@@ -138,16 +158,18 @@ export interface HdriLoaderLike { loadAsync(url: string): Promise<THREE.DataText
 // Carga el HDRI del manifiesto como fondo y fuente del entorno; la niebla toma el color del horizonte.
 // Si falla, se mantiene la cúpula procedural y solo se avisa. Devuelve true si se aplicó.
 export async function loadHdriSky(gs: GameScene, manifest: AssetManifest | null, loader: HdriLoaderLike = new HDRLoader()): Promise<boolean> {
-  const url = assetUrl(manifest, config.assets.hdriId, 'hdri');
+  const night = isNight(gs.info);
+  const url = assetUrl(manifest, gs.info?.hdri ?? config.assets.hdriId, 'hdri');
   try {
     if (!url) throw new Error('sin HDRI en el manifiesto');
     const tex = await loader.loadAsync(url);
     tex.mapping = THREE.EquirectangularReflectionMapping;
     gs.hdri = tex;
     gs.scene.background = tex;
-    gs.scene.backgroundIntensity = config.sky.hdriBackgroundIntensity;
+    gs.scene.backgroundIntensity = night ? config.night.backgroundIntensity : config.sky.hdriBackgroundIntensity;
     gs.sky.visible = false;
-    if (gs.scene.fog) gs.scene.fog.color.copy(hdriHorizonColor(tex)).multiplyScalar(config.sky.hdriBackgroundIntensity);
+    // De noche la niebla mantiene config.night.fog (b18 D4)
+    if (gs.scene.fog && !night) gs.scene.fog.color.copy(hdriHorizonColor(tex)).multiplyScalar(config.sky.hdriBackgroundIntensity);
     // El entorno se reconstruye desde el HDRI en el siguiente applyQuality
     (gs.scene.environment?.userData.rt as THREE.WebGLRenderTarget | undefined)?.dispose();
     gs.scene.environment = null;
@@ -158,15 +180,16 @@ export async function loadHdriSky(gs: GameScene, manifest: AssetManifest | null,
   }
 }
 
-// Ejes x/y de la cámara de sombra (lookAt con up = +Y), constantes porque el sol no se mueve
+// Ejes x/y de la cámara de sombra (lookAt con up = +Y) para la dirección de luz dada (día por defecto)
 const sunDirN = new THREE.Vector3(...config.light.sunDir).normalize();
-const lightX = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), sunDirN).normalize();
-const lightY = new THREE.Vector3().crossVectors(sunDirN, lightX);
+const _up = new THREE.Vector3(0, 1, 0), lightX = new THREE.Vector3(), lightY = new THREE.Vector3();
 const _center = new THREE.Vector3();
 
 // Centro del encuadre de sombra: aheadM por delante del coche, ajustado a múltiplos de un téxel en el plano de la luz
 export function shadowCenter(x: number, y: number, z: number, yaw: number, extentM: number, mapSize: number,
-  aheadM = config.light.shadowAheadM, out = new THREE.Vector3()): THREE.Vector3 {
+  aheadM = config.light.shadowAheadM, out = new THREE.Vector3(), dir: THREE.Vector3 = sunDirN): THREE.Vector3 {
+  lightX.crossVectors(_up, dir).normalize();
+  lightY.crossVectors(dir, lightX);
   out.set(x + Math.cos(yaw) * aheadM, y, z - Math.sin(yaw) * aheadM);
   const texel = extentM / Math.max(1, mapSize);
   const cx = out.dot(lightX), cy = out.dot(lightY);
@@ -178,9 +201,9 @@ export function shadowCenter(x: number, y: number, z: number, yaw: number, exten
 // Cada fotograma: sol y su sombra siguen al coche; la cúpula se centra en la cámara
 export function updateScene(gs: GameScene, x: number, y: number, z: number, yaw: number): void {
   const L = config.light;
-  const c = shadowCenter(x, y, z, yaw, L.shadowExtentM, gs.sun.shadow.mapSize.x, L.shadowAheadM, _center);
+  const c = shadowCenter(x, y, z, yaw, L.shadowExtentM, gs.sun.shadow.mapSize.x, L.shadowAheadM, _center, gs.sunDir);
   gs.sun.target.position.copy(c);
-  gs.sun.position.copy(c).addScaledVector(sunDirN, L.shadowDistM);
+  gs.sun.position.copy(c).addScaledVector(gs.sunDir, L.shadowDistM);
   gs.sun.target.updateMatrixWorld();
   gs.sky.position.copy(gs.camera.position);
 }
@@ -230,10 +253,10 @@ export function applyQuality(renderer: THREE.WebGLRenderer, camera: THREE.Perspe
   }
   gs.sun.castShadow = on;
   // Árboles según el nivel: se regenera el entorno si cambia el número
-  if (gs.env.userData.trees !== settings.trees) {
+  if (gs.env.userData.trees !== treesFor(settings, gs.info)) {
     gs.scene.remove(gs.env);
     disposeEnvironment(gs.env);
-    gs.env = buildEnv(gs.track, gs.world, gs.meshes, settings);
+    gs.env = buildEnv(gs.track, gs.world, gs.meshes, settings, gs.info);
     gs.scene.add(gs.env);
   }
   const env = gs.scene.environment;

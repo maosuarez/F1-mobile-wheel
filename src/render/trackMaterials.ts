@@ -100,6 +100,22 @@ export function createGravelTexture(seed = config.surfaces.seed + 2, px = config
   return makeTexture(data, size, true);
 }
 
+// Arena: respaldo procedural de coast_sand_01 (b18 D5), ruido suave sobre config.sand.procColor
+export function createSandTexture(seed = config.surfaces.seed + 4, px = config.surfaces.texPx): THREE.DataTexture {
+  const size = clampPx(px), rnd = mulberry32(seed);
+  const fine = tileableNoise(size, size / 4, rnd), broad = tileableNoise(size, 8, rnd);
+  const data = new Uint8Array(size * size * 4);
+  const base = new THREE.Color(config.sand.procColor);
+  for (let i = 0; i < size * size; i++) {
+    const k = 1 + 0.12 * (fine[i] - 0.5) + 0.25 * (broad[i] - 0.5);
+    data[i * 4] = Math.min(255, Math.round(base.r * 255 * k));
+    data[i * 4 + 1] = Math.min(255, Math.round(base.g * 255 * k));
+    data[i * 4 + 2] = Math.min(255, Math.round(base.b * 255 * k));
+    data[i * 4 + 3] = 255;
+  }
+  return makeTexture(data, size, true);
+}
+
 // Hormigón: gris claro con manchas suaves (respaldo procedural de brushed_concrete)
 export function createConcreteTexture(seed = config.surfaces.seed + 3, px = config.surfaces.texPx): THREE.DataTexture {
   const size = clampPx(px), rnd = mulberry32(seed);
@@ -118,15 +134,19 @@ const TINT = { gravel: '#ffffff', runoff: '#3a3a3e', concrete: '#c9c6c0' } as co
 const NOMAP_TINT = { gravel: PROC_GRAVEL, runoff: '#3a3a3e', concrete: '#b5b2ac' } as const;
 
 // maps = false (perfil software): sin map ni roughnessMap, solo colores por vértice
-export function createTrackMaterials(maps = true): TrackMaterials {
+// ground 'sand' (b18 D5): el material de hierba (terreno, escapatoria de hierba y suelo) pasa a arena
+export function createTrackMaterials(maps = true, ground: 'grass' | 'sand' = 'grass'): TrackMaterials {
   const asphalt = maps ? createAsphaltTextures() : null;
   const road = new THREE.MeshStandardMaterial({ vertexColors: true, map: asphalt?.color ?? null, roughnessMap: asphalt?.roughness ?? null, roughness: 1, metalness: 0 });
-  const grass = new THREE.MeshStandardMaterial({ vertexColors: true, map: maps ? createGrassTexture() : null, roughness: 1, metalness: 0 });
+  const sand = ground === 'sand';
+  const grass = new THREE.MeshStandardMaterial({ vertexColors: true, color: sand && !maps ? config.sand.procColor : '#ffffff',
+    map: maps ? (sand ? createSandTexture() : createGrassTexture()) : null, roughness: 1, metalness: 0 });
   const tint = maps ? TINT : NOMAP_TINT;
   const gravel = new THREE.MeshStandardMaterial({ vertexColors: true, color: tint.gravel, map: maps ? createGravelTexture() : null, roughness: 1, metalness: 0 });
   const runoff = new THREE.MeshStandardMaterial({ vertexColors: true, color: tint.runoff, map: asphalt?.color ?? null, roughnessMap: asphalt?.roughness ?? null, roughness: 1, metalness: 0 });
   const concrete = new THREE.MeshStandardMaterial({ color: tint.concrete, map: maps ? createConcreteTexture() : null, roughness: 0.9, metalness: 0 });
   for (const m of [road, grass, gravel, runoff, concrete]) m.userData.textureSource = 'procedural';
+  grass.userData.ground = ground;
   return { road, grass, gravel, runoff, concrete };
 }
 
@@ -210,7 +230,8 @@ export function tintGrass(m: THREE.MeshStandardMaterial): void {
   m.needsUpdate = true;
 }
 
-export interface TrackTextureOptions { normals: boolean; anisotropy: number; maxPx?: number }
+// ground 'sand' (b18 D5): el material de hierba carga la arena (config.sand.textureId) sin teñir
+export interface TrackTextureOptions { normals: boolean; anisotropy: number; maxPx?: number; ground?: 'grass' | 'sand' }
 
 // Sustituye los mapas procedurales por los fotoescaneados. Un material cuya textura falla conserva el
 // respaldo procedural y solo se emite un aviso; nunca lanza. Devuelve los materiales cargados y fallidos.
@@ -220,7 +241,8 @@ export async function loadTrackTextures(mats: TrackMaterials, opts: TrackTexture
   // Albedo medio del respaldo procedural del asfalto (0,86 sRGB): los colores por vértice de la pista son absolutos
   const roadTarget = srgbToLinear(0.86);
   await Promise.all((Object.keys(TRACK_TEXTURE_IDS) as (keyof TrackMaterials)[]).map(async (key) => {
-    const id = TRACK_TEXTURE_IDS[key];
+    const sand = key === 'grass' && opts.ground === 'sand';
+    const id = sand ? config.sand.textureId : TRACK_TEXTURE_IDS[key];
     try {
       const maps = ['Diffuse', 'Rough', ...(opts.normals ? ['nor_gl'] : [])];
       const urls = maps.map((m) => assetUrl(manifest, id, m));
@@ -236,7 +258,7 @@ export async function loadTrackTextures(mats: TrackMaterials, opts: TrackTexture
       });
       const m = mats[key];
       m.map = diff; m.roughnessMap = rough; m.roughness = 1;
-      if (key === 'grass') tintGrass(m);
+      if (key === 'grass' && !sand) tintGrass(m);
       if (nor) m.normalMap = nor;
       // El color por vértice se conserva multiplicando; en la pista se compensa el brillo medio de la foto
       const mean = key === 'road' ? meanLinear(diff.image) : null;

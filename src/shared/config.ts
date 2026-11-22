@@ -46,6 +46,23 @@ export const config = {
            fogNearFrac: 0.3, fogFarFrac: 0.95,
            // HDRI (b13, design D7): intensidad del fondo y radiancia máxima del entorno PMREM (sin el disco solar)
            hdriBackgroundIntensity: 1.0, hdriEnvClamp: 8 },
+  // Iluminación nocturna (b18, design D4): solo en circuitos con lighting 'night'. Colores sRGB, medidas en metros.
+  // Postes cada poleEveryM junto a la barrera alternando lados (desde s = 0); charcos de luz en el color de vértice del
+  // asfalto: 1 − poolDepth·(1 − cos²(π·d/poleEveryM)), el asfalto ×roadGain (líneas ×lineGain, siguen más claras) para que se lea bajo los
+  // focos: el color de vértice de día (#2b2b2e) es muy oscuro, de noche falta la luz del cielo y el tono ACES aplasta
+  // los oscuros (con ×1 la franja de asfalto queda en ~0,06; subir la exposición aclararía también el cielo); ventanas en rejilla windowW × windowH con windowLit encendidas
+  // backgroundIntensity: los HDRI nocturnos de Poly Haven vienen normalizados a brillo de día (horizonte ~2 lineal):
+  // se escalan para que el cielo quede oscuro; el entorno PMREM no usa este factor
+  night: { envIntensity: 0.25, fog: '#0b1020', backgroundIntensity: 0.02,
+           sunDir: [0.1, 1, 0.15] as [number, number, number], sunColor: '#f2f4ff', sunIntensity: 2.0,
+           hemiSky: '#1d2540', hemiGround: '#0a0a0a', hemiIntensity: 0.25,
+           skyZenith: '#03050b', skyHorizon: '#0b1020', skyGround: '#05060a',
+           poleEveryM: 30, poleOffsetM: 1.5, poleH: 14, poleR: 0.18, poleSinkM: 2, armM: 3, headLenM: 1.4, headH: 0.35,
+           poleColor: '#5a5d63', headColor: '#fff4e0', headEmissive: 6, poolDepth: 0.35, roadGain: 40, lineGain: 1.5,
+           windowW: 3, windowH: 3.2, windowLit: 0.35, windowSeed: 1811, windowColor: '#ffd9a0', windowIntensity: 1.5,
+           bloomStrength: 0.6, bloomThreshold: 0.8 },
+  // Suelo de desierto (b18, design D5): color de talud y respaldo procedural de la arena
+  sand: { steepColor: '#a08060', procColor: '#c9a877', textureId: 'coast_sand_01' },
   // Coche visual (b6, design D3). Medidas en metros, ángulos en grados, colores sRGB de la escudería ficticia
   carVisual: { wheelRadiusM: 0.36, tireFrontW: 0.305, tireRearW: 0.405, halfTrackM: 1.0,
                steerWheelDeg: 120, flapOpenDeg: 35, flapRateDegS: 300,
