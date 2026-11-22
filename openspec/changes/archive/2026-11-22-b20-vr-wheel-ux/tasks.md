@@ -17,7 +17,7 @@
 ## 4. Verificación y cierre
 
 - [x] 4.1 E2E `tests/e2e/b20_vr_wheel.py` (puertos limpios según la memoria del proyecto): página del volante con `?debug=1` contra un host de prueba que envía `tel` (o el host real): (a) sin `btn-drs`/`btn-ers`, freno ≥ 60 % del alto; (b) `injectMotion` con dos picos alternos en recta y `drs=1` → un `ev drs`; con `drs=0` → `ers` true y luego false al frenar; (c) `tel` con `vr=true` → `disp-speed` oculto y 4 botones visibles ≥ 64 px; (d) `tel` con `cal=true` → `cal-start` visible, al tocar sale `ev recal` y se oculta. Host: con `__debug` simular VR si existe un gancho; si no, cubrir `calibrating` con Vitest y dejar la validación con visor real como pendiente manual. Sin errores de consola. Verificar: `.venv/bin/python tests/e2e/b20_vr_wheel.py` sale con 0.
-- [ ] 4.2 Cierre (Fable): `npx vitest run` en verde, E2E 4.1 en verde, `code-review-graph build` + `detect_changes`, commits Conventional Commits vía `commit-orchestrator` (`feat(wheel): agitar para DRS/ERS, modo VR y calibración` y `feat(vr): instrumentos en el volante y panel de carrera`). Prueba con visor y celular real: pendiente para la revisión final.
+- [x] 4.2 Cierre (Fable): `npx vitest run` en verde, E2E 4.1 en verde, `code-review-graph build` + `detect_changes`, commits Conventional Commits vía `commit-orchestrator` (`feat(wheel): agitar para DRS/ERS, modo VR y calibración` y `feat(vr): instrumentos en el volante y panel de carrera`). Prueba con visor y celular real: pendiente para la revisión final.
 
 ## Workflow follow-up
 
