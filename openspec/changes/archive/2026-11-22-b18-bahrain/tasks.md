@@ -14,4 +14,4 @@
 
 ## 4. Cierre (Fable)
 
-- [ ] 4.1 Revisión visual, `npx vitest run`, `npm run build`, `code-review-graph build` + `detect_changes`; commits `feat(track): circuito de Bahréin` y `feat(render): iluminación nocturna y suelo de desierto` vía `commit-orchestrator`; `/opsx:archive b18-bahrain`; redespliegue del contenedor.
+- [x] 4.1 Revisión visual, `npx vitest run`, `npm run build`, `code-review-graph build` + `detect_changes`; commits `feat(track): circuito de Bahréin` y `feat(render): iluminación nocturna y suelo de desierto` vía `commit-orchestrator`; `/opsx:archive b18-bahrain`; redespliegue del contenedor.
