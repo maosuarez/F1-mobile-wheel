@@ -10,7 +10,7 @@ import { RivalAudio } from '../audio/rivals';
 import { TEAMS } from '../shared/teams';
 import { loadTrackChoice, resolveTrackId, saveTrackChoice, trackById, trackUrl } from '../shared/tracks';
 import { RaceMenu, MenuPad, wheelMenuActions, type MenuChoice } from './race/menu';
-import { Tower, TOWER_HZ, towerEntries } from './race/tower';
+import { Tower, TOWER_HZ, towerEntries, towerModel, towerWindow } from './race/tower';
 import { ResultsView, resultsModel } from './race/results';
 import { NEUTRAL_INPUT, type DriverCommand, type DriverInput } from '../sim/types';
 import { applyQuality, createRenderer, createScene, loadHdriSky, objectCost, rendererName, resize, shadowStats, updateScene } from '../render/scene';
@@ -24,7 +24,10 @@ import { VR_QUALITY } from '../render/vrQuality';
 import { VrSession } from './vr/session';
 import { VrPanel } from './vr/panel';
 import { VrMinimap } from './vr/minimap';
-import type { PanelScreen, PanelRace } from './vr/panelModel';
+import { RACE_ROWS, type PanelScreen, type PanelRace } from './vr/panelModel';
+import { wheelScreenOps } from './vr/wheelScreenModel';
+import { needsCalibration, startsOnVrExit, telCal } from './vr/calibration';
+import { WheelScreen } from '../render/wheelScreen';
 import { hudModel } from './hudModel';
 import * as THREE from 'three';
 import { CameraRig } from '../render/cameras/rig';
@@ -57,7 +60,7 @@ import { onlineGrid } from './online/client';
 import { QrOverlay } from './online/qrOverlay';
 import { LobbyView, gridTeams, nameCode, parseOnlineParams, resStandings, type LobbyResult } from './online/lobby';
 
-type GameState = 'loading' | 'menu' | 'lobby' | 'pairing' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
+type GameState = 'loading' | 'menu' | 'lobby' | 'pairing' | 'calibrating' | 'countdown' | 'racing' | 'paused' | 'results' | 'error';
 type PauseReason = 'user' | 'hidden' | 'wheelLost';
 
 const params = new URLSearchParams(window.location.search);
@@ -400,6 +403,14 @@ async function start(): Promise<void> {
     else countdownEndMs = nowMs() + config.race.countdownS * 1000;
     setState('countdown');
   };
+  // Calibración en VR antes de la salida (b20 D6): la cuenta atrás espera al evento `recal` (o Enter / A)
+  const needsCal = () => needsCalibration({ inVr, online: race.isOnline, players: pilots.length,
+    wheelOk: p1.wheel?.link() === 'ok', wheelIsSource: p1.source === p1.wheel });
+  const beginStart = () => {
+    if (!needsCal()) { startCountdown(); return; }
+    setState('calibrating');
+    ui.toast('Calibra el volante en el celular', 4000);
+  };
   // Cualquiera pausa para ambos (b15 D6)
   const pause = (reason: PauseReason, who = 0) => {
     if (state !== 'racing' && state !== 'countdown') return;
@@ -437,7 +448,7 @@ async function start(): Promise<void> {
     for (const p of pilots) { p.bestSectors.fill(null); syncPrev(p); p.gamepad.reset(); }
     controllersSource.reset();
     pauseReason = null;
-    startCountdown();
+    beginStart();
   };
   // Online: salir de la sala y volver al menú sin los parámetros online (recarga)
   const leaveOnline = () => {
@@ -481,7 +492,7 @@ async function start(): Promise<void> {
 
   // Enter en el emparejamiento: con 1 jugador, teclado; con 2, cada uno su fuente por prioridad (b15 D2)
   const startWithoutWheels = () => {
-    if (!split) { setSource(p1, p1.keyboard); startCountdown(); return; }
+    if (!split) { setSource(p1, p1.keyboard); beginStart(); return; }
     let pads = 0;
     while (pads < nP && pilots[pads].gamepad.connected()) pads++;
     const kinds = assignSources(nP, pads, pilots.map((p) => (p.wheel ? p.wheel.link() : 'none')));
@@ -489,7 +500,7 @@ async function start(): Promise<void> {
       if (p.source.name === 'autopilot') return;
       setSource(p, kinds[i] === 'wheel' && p.wheel ? p.wheel : kinds[i] === 'gamepad' ? p.gamepad : p.keyboard);
     });
-    startCountdown();
+    beginStart();
   };
 
   window.addEventListener('keydown', (e) => {
@@ -497,6 +508,7 @@ async function start(): Promise<void> {
     if (e.code === 'KeyV' && !e.repeat) { const m = !audio.muted; for (const a of audioRefs) a.setMuted(m); return; }
     if (e.code === 'F3') { e.preventDefault(); panel.toggle(); return; }
     if (state === 'pairing' && (e.code === 'Enter' || e.code === 'NumpadEnter')) startWithoutWheels();
+    else if (state === 'calibrating' && (e.code === 'Enter' || e.code === 'NumpadEnter')) startCountdown();
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause('hidden'); });
 
@@ -509,13 +521,14 @@ async function start(): Promise<void> {
       if (k === 'pause' && p.source === w) togglePause();
       else if (k === 'cam') rigOf(p).next();
       else if (k === 'restart' && p.source === w) restartRace();
+      else if (k === 'recal' && state === 'calibrating' && p.source === w) startCountdown();
     }
     if (p.source !== w) w.takeCommands();                 // órdenes sin efecto si no controla el volante
     const link = w.link();
     if (link === 'ok') {
       if (state === 'pairing') {
         setSource(p, w);
-        if (pilots.every((o) => o.wheel?.link() === 'ok')) startCountdown();
+        if (pilots.every((o) => o.wheel?.link() === 'ok')) beginStart();
       } else if (p.source !== w && (state === 'countdown' || state === 'racing' || state === 'paused')) {
         setSource(p, w); ui.toast(`Volante${label(p)} conectado`);
       } else if (state === 'paused' && pauseReason === 'wheelLost' && lostPlayer === p.index) resume();
@@ -555,6 +568,7 @@ async function start(): Promise<void> {
     if (inVr) for (const ev of controllersSource.pollButtons(dtMs)) {
       if (ev === 'camera') rig.next();
       else if (ev === 'pause' && state === 'pairing') { setSource(p1, controllersSource); controllersSource.reset(); startCountdown(); }
+      else if (ev === 'pause' && state === 'calibrating') startCountdown();     // A salta la calibración (b20 D6)
       else if (ev === 'pause') togglePause();
       else if (ev === 'restart') restartRace();
       else if (state === 'racing') { p1.sim.recenter(); syncPrev(p1); }
@@ -582,7 +596,8 @@ async function start(): Promise<void> {
     }
     const e = w.echo();
     const raceTel = race.isRace ? { pos: race.playerPos(p.index), laps: race.laps } : undefined;
-    client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg, race: raceTel })));
+    client.send(encode(buildTel(sim.state, { warn, echo: e.ts, hold: e.holdMs, dbg, race: raceTel,
+      vr: inVr, cal: telCal(state, race.isOnline, inVr) })));
   };
   // Calidad adaptativa: empieza en high salvo ?quality= o GL por software, nunca vuelve a subir
   const adaptive = new AdaptiveQuality(config.quality, capLevel(q0.level), q0.locked);
@@ -634,6 +649,8 @@ async function start(): Promise<void> {
   let inVr = false;
   let vrPanel: VrPanel | null = null;
   let vrMinimap: VrMinimap | null = null;
+  let wheelScreen: WheelScreen | null = null;    // instrumentos en el volante de J1, solo en VR (b20 D4)
+  let vrScreenKind = '';                          // pantalla del panel VR del último fotograma ('' = oculto)
   const vr = new VrSession(renderer, $('vr-enter') as HTMLButtonElement, navigator, window.isSecureContext, {
     onStart: () => {
       inVr = true;
@@ -648,6 +665,8 @@ async function start(): Promise<void> {
       camera.add(vrPanel.mesh);
       vrMinimap ??= new VrMinimap(p1.minimap.canvas);
       camera.add(vrMinimap.mesh);
+      wheelScreen ??= new WheelScreen();
+      p1.car.steeringWheel.add(wheelScreen.mesh);
       quality = VR_QUALITY;
       applyAll();
     },
@@ -655,6 +674,9 @@ async function start(): Promise<void> {
       inVr = false;
       if (vrPanel) camera.remove(vrPanel.mesh);
       if (vrMinimap) camera.remove(vrMinimap.mesh);
+      if (wheelScreen) p1.car.steeringWheel.remove(wheelScreen.mesh);
+      vrScreenKind = '';
+      if (startsOnVrExit(state)) startCountdown();
       vrAnchor.remove(camera);
       scene.remove(vrAnchor);
       if (vrRig) syncRigMode(deskRig, vrRig);
@@ -681,7 +703,8 @@ async function start(): Promise<void> {
         gear: c.gear, rpm: c.rpm, leds: c.leds, drs: c.drs, ers: c.ersCharge, ot: c.overtake,
         autoShift: sim.assists.autoShift, lapValid: t.lapValid, warn: p1.warnings.current(sim.state, sim.state.t), overheated: c.overheated,
         inputApplied: { steer: lastInput.steer, thr: lastInput.throttle, brk: lastInput.brake, ers: lastInput.ers },
-        pauseReason, audio: audio.debug(), camera: rig.debug(), fxSent: { ...fxSent },
+        pauseReason, inVr, vrScreen: vrScreenKind, wheelScreenVisible: !!wheelScreen && inVr && wheelScreen.mesh.visible,
+        audio: audio.debug(), camera: rig.debug(), fxSent: { ...fxSent },
         quality: capLevel(adaptive.level), rendererName: gpuName, ...shadowStats(scene, renderer), post: quality.post,
         particlesActive: particles.debug().active, fpsAvg: fpsMeter.avg(), fpsP5: fpsMeter.p5(),
         carDrawCalls: carCost.drawCalls, carTriangles: carCost.triangles, envDrawCalls: objectCost(gs.env).drawCalls,
@@ -913,15 +936,32 @@ async function start(): Promise<void> {
     dpr = renderer.getPixelRatio();
 
     if (inVr && vrPanel) {
-      const sim = p1.sim;
+      const sim = p1.sim, c = sim.state.car;
+      const helmet = rig.debug().mode === 'helmet';
+      const model = hudModel(sim.state, state === 'racing' ? p1.warnings.current(sim.state, sim.state.t) : '', p1.bestSectors, sim.assists.autoShift);
+      // Instrumentos del volante: solo con cámara de casco y redibujados a hudRedrawHz
+      if (wheelScreen) {
+        wheelScreen.mesh.visible = helmet;
+        if (helmet) wheelScreen.update(now, wheelScreenOps(model, c.drs, model.ersPct, c.overtake), config.vr.hudRedrawHz);
+      }
+      // Panel (b20 D5): pairing/calibrating/countdown/paused; carrera → torre; práctica con casco → oculto; práctica → HUD
       const raceInfo = (): PanelRace => ({ pos: race.playerPos(), total: race.session.entries.length,
         lap: race.session.lapsDone(race.playerId) + 1, laps: race.laps });
-      const screen: PanelScreen = state === 'pairing' ? { kind: 'pairing', room: ui.roomText, hint: ui.hintText }
+      const raceScreen = (): PanelScreen => {
+        const tw = towerModel(race.standings(), towerInfo, race.playerId, race.laps, race.humanIds);
+        return { kind: 'race', race: raceInfo(), ahead: tw.ahead, behind: tw.behind, rows: towerWindow(tw.rows, RACE_ROWS),
+          ...(helmet ? {} : { speed: model.speed, gear: model.gear }) };
+      };
+      const screen: PanelScreen | null = state === 'pairing' ? { kind: 'pairing', room: ui.roomText, hint: ui.hintText }
+        : state === 'calibrating' ? { kind: 'calibrate' }
         : state === 'countdown' ? { kind: 'countdown', n: Number(countdownNumber()) }
         : state === 'paused' ? { kind: 'paused' }
-        : { kind: 'hud', model: hudModel(sim.state, state === 'racing' ? p1.warnings.current(sim.state, sim.state.t) : '', p1.bestSectors, sim.assists.autoShift),
-          race: race.isRace ? raceInfo() : undefined };
-      vrPanel.update(now, screen, ui.qrCanvas);
+        : race.isRace ? raceScreen()
+        : helmet ? null
+        : { kind: 'hud', model };
+      vrPanel.mesh.visible = screen !== null;
+      vrScreenKind = screen ? screen.kind : '';
+      if (screen) vrPanel.update(now, screen, ui.qrCanvas);
     }
     const lights = $('race-lights');
     lights.hidden = !(state === 'countdown' && race.isRace);

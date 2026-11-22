@@ -1,4 +1,5 @@
 import type { HudModel } from '../hudModel';
+import type { TowerRow } from '../race/tower';
 
 // Instrucciones de dibujo puras para el panel VR (b7, design D6): testeables sin canvas.
 export const PANEL_W = 1024;
@@ -16,7 +17,10 @@ export type PanelScreen =
   | { kind: 'hud'; model: HudModel; race?: PanelRace }
   | { kind: 'pairing'; room: string; hint: string }
   | { kind: 'countdown'; n: number }
-  | { kind: 'paused' };
+  | { kind: 'paused' }
+  // b20 D5: panel de carrera en VR (speed/gear solo con cámaras que no son casco) y espera de calibración
+  | { kind: 'race'; race: PanelRace; ahead: string; behind: string; rows: TowerRow[]; speed?: string; gear?: string }
+  | { kind: 'calibrate' };
 
 const BG = 'rgba(8,10,16,0.78)';
 const FG = '#f2f4f8', DIM = '#8d96a8', WARN = '#ffb020', BAD = '#ff5a5a';
@@ -58,6 +62,27 @@ export function legendOps(): DrawOp[] {
 
 const HINT_MAX = 44;
 
+// Panel de carrera (b20 D5): cabecera, diferencias y hasta 6 filas de la torre con el jugador resaltado
+export const RACE_ROWS = 6;
+function raceOps(s: Extract<PanelScreen, { kind: 'race' }>): DrawOp[] {
+  const r = s.race;
+  const ops: DrawOp[] = [rect(0, 0, PANEL_W, PANEL_H, BG)];
+  ops.push(text('race', `P${r.pos}/${r.total} · V ${Math.min(r.lap, r.laps)}/${r.laps}`, 40, 76, 60, 'left', WARN));
+  ops.push(text('ahead', `▲ ${s.ahead}`, 40, 140, 42, 'left', FG, 600));
+  ops.push(text('behind', `▼ ${s.behind}`, 300, 140, 42, 'left', FG, 600));
+  if (s.speed !== undefined) ops.push(text('speed', `${s.speed} km/h`, 820, 76, 56, 'right'));
+  if (s.gear !== undefined) ops.push(text('gear', s.gear, 984, 76, 60, 'right'));
+  s.rows.slice(0, RACE_ROWS).forEach((row, i) => {
+    const y = 210 + i * 52;
+    if (row.player) ops.push(rect(30, y - 40, 600, 50, 'rgba(255,176,32,0.22)'));
+    ops.push(text(`row${i}Pos`, String(row.pos), 90, y, 36, 'right', row.player ? WARN : DIM));
+    ops.push(rect(110, y - 28, 10, 30, row.color));
+    ops.push(text(`row${i}Code`, row.code, 140, y, 36, 'left', FG));
+    ops.push(text(`row${i}Gap`, row.gap, 610, y, 36, 'right', row.player ? FG : DIM, 600));
+  });
+  return ops;
+}
+
 export function drawScreen(s: PanelScreen): DrawOp[] {
   switch (s.kind) {
     case 'hud': return drawPanelModel(s.model, s.race);
@@ -74,6 +99,13 @@ export function drawScreen(s: PanelScreen): DrawOp[] {
       rect(0, 0, PANEL_W, PANEL_H, BG),
       text('paused', 'PAUSA', 512, 220, 170, 'center', WARN),
       ...legendOps(),
+    ];
+    case 'race': return raceOps(s);
+    case 'calibrate': return [
+      rect(0, 0, PANEL_W, PANEL_H, BG),
+      text('cal1', 'CALIBRA EL VOLANTE', 512, 200, 84, 'center', WARN),
+      text('cal2', 'EN EL CELULAR', 512, 310, 84, 'center'),
+      text('calSkip', 'A = SALTAR', 512, 440, LEGEND_SIZE, 'center', DIM, 600),
     ];
   }
 }

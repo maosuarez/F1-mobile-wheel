@@ -49,6 +49,16 @@ export function towerModel(standings: readonly Standing[], entries: readonly Tow
   };
 }
 
+// Ventana de n filas centrada en el jugador local (J1; si no, el primero marcado), recortada a los extremos (b20 D5)
+export function towerWindow(rows: TowerRow[], n: number): TowerRow[] {
+  if (rows.length <= n) return rows.slice();
+  let idx = rows.findIndex((r) => r.local === 0);
+  if (idx < 0) idx = rows.findIndex((r) => r.player);
+  if (idx < 0) idx = 0;
+  const start = Math.max(0, Math.min(rows.length - n, idx - Math.floor(n / 2)));
+  return rows.slice(start, start + n);
+}
+
 export class Tower {
   private readonly root = document.getElementById('race-hud')!;
   private readonly q = (id: string) => this.root.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;

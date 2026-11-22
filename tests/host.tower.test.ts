@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gapText, towerModel, towerEntries } from '../src/host/race/tower';
+import { gapText, towerModel, towerEntries, towerWindow, type TowerRow } from '../src/host/race/tower';
 import { resultsModel } from '../src/host/race/results';
 import { RaceController } from '../src/host/race/controller';
 import { TEAMS } from '../src/shared/teams';
@@ -70,5 +70,21 @@ describe('resultados de carrera (b14 D7)', () => {
     const tw = towerModel(sts, towerEntries(ents3), 0, 5, [0, 2]);
     expect(tw.rows.map((r) => r.local)).toEqual([-1, 0, 1]);
     expect(tw.rows.filter((r) => r.player)).toHaveLength(2);
+  });
+});
+
+describe('ventana de la torre (b20 D5)', () => {
+  const rows = (n: number, me: number): TowerRow[] => Array.from({ length: n }, (_, i) => ({ pos: i + 1, id: i, code: `C${i}`, color: '#fff', gap: '',
+    player: i === me, local: i === me ? 0 : -1 }));
+  const pos = (r: TowerRow[]) => r.map((x) => x.pos);
+  it('6 filas centradas en el jugador y recortadas en los extremos', () => {
+    expect(pos(towerWindow(rows(10, 6), 6))).toEqual([4, 5, 6, 7, 8, 9]);
+    expect(pos(towerWindow(rows(10, 0), 6))).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(pos(towerWindow(rows(10, 1), 6))).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(pos(towerWindow(rows(10, 9), 6))).toEqual([5, 6, 7, 8, 9, 10]);
+    expect(pos(towerWindow(rows(10, 8), 6))).toEqual([5, 6, 7, 8, 9, 10]);
+  });
+  it('con menos filas que la ventana devuelve todas', () => {
+    expect(pos(towerWindow(rows(4, 2), 6))).toEqual([1, 2, 3, 4]);
   });
 });

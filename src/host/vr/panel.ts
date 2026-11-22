@@ -2,6 +2,20 @@ import * as THREE from 'three';
 import { config as defaultConfig, type GameConfig } from '../../shared/config';
 import { drawScreen, PANEL_H, PANEL_W, type DrawOp, type PanelScreen } from './panelModel';
 
+// Pinta instrucciones de dibujo en un canvas 2D (compartido con la pantalla del volante, b20 D4)
+export function paintOps(g: CanvasRenderingContext2D, ops: DrawOp[], qr?: HTMLCanvasElement): void {
+  g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  g.textBaseline = 'alphabetic';
+  for (const op of ops) {
+    if (op.kind === 'rect') { g.fillStyle = op.color; g.fillRect(op.x, op.y, op.w, op.h); }
+    else if (op.kind === 'text') {
+      g.fillStyle = op.color; g.textAlign = op.align;
+      g.font = `${op.weight ?? 700} ${op.size}px system-ui, sans-serif`;
+      g.fillText(op.text, op.x, op.y);
+    } else if (qr && qr.width > 0) g.drawImage(qr, op.x, op.y, op.size, op.size);
+  }
+}
+
 // Panel de canvas del HUD en VR (b7, design D6): plano hijo de la cámara, esquina inferior izquierda.
 // Se redibuja a config.vr.hudRedrawHz, no por fotograma.
 export class VrPanel {
@@ -33,22 +47,8 @@ export class VrPanel {
     if (screen.kind === this.lastKind && nowMs - this.lastMs < dueMs) return;
     this.lastKind = screen.kind;
     this.lastMs = nowMs;
-    this.paint(drawScreen(screen), qr);
+    paintOps(this.ctx, drawScreen(screen), qr);
     this.texture.needsUpdate = true;
-  }
-
-  private paint(ops: DrawOp[], qr?: HTMLCanvasElement): void {
-    const g = this.ctx;
-    g.clearRect(0, 0, PANEL_W, PANEL_H);
-    g.textBaseline = 'alphabetic';
-    for (const op of ops) {
-      if (op.kind === 'rect') { g.fillStyle = op.color; g.fillRect(op.x, op.y, op.w, op.h); }
-      else if (op.kind === 'text') {
-        g.fillStyle = op.color; g.textAlign = op.align;
-        g.font = `${op.weight ?? 700} ${op.size}px system-ui, sans-serif`;
-        g.fillText(op.text, op.x, op.y);
-      } else if (qr && qr.width > 0) g.drawImage(qr, op.x, op.y, op.size, op.size);
-    }
   }
 
   dispose(): void {

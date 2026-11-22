@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { config } from '../src/shared/config';
 import { createCarState, maxSteerRad } from '../src/sim/car';
 import { buildCar } from '../src/render/car';
+import { objectCost } from '../src/render/scene';
+import { WheelScreen } from '../src/render/wheelScreen';
 
 const DEG = Math.PI / 180;
 const mk = (over: Record<string, unknown> = {}) => ({ ...createCarState(), ...over }) as ReturnType<typeof createCarState>;
@@ -74,5 +76,35 @@ describe('coche visual', () => {
     });
     expect(drawCalls).toBeLessThanOrEqual(14);
     expect(tris).toBeLessThanOrEqual(60000);
+  });
+
+  it('steeringWheel expuesto (b20 D4): es el grupo del volante y fuera de VR los draw calls no cambian', () => {
+    const v = buildCar();
+    expect(v.steeringWheel).toBe(v.group.getObjectByName('steering-wheel'));
+    expect(objectCost(v.group).drawCalls).toBe(13);            // igual que antes del change
+    expect(v.group.getObjectByName('wheel-screen')).toBeUndefined();
+  });
+
+  it('WheelScreen: 1 malla y 1 textura dentro del volante, mirando a −X', () => {
+    const ctx = new Proxy({}, { get: (_t, k) => (k === 'canvas' ? { width: 592, height: 512 } : () => undefined), set: () => true });
+    const g = globalThis as { document?: unknown };
+    const prev = g.document;
+    g.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
+    try {
+      const v = buildCar();
+      const before = objectCost(v.group).drawCalls;
+      const ws = new WheelScreen();
+      v.steeringWheel.add(ws.mesh);
+      expect(objectCost(v.group).drawCalls).toBe(before + 1);
+      const mat = ws.mesh.material as THREE.MeshBasicMaterial;
+      expect(mat.map).toBeInstanceOf(THREE.CanvasTexture);
+      expect(mat.toneMapped).toBe(false);
+      const n = new THREE.Vector3(0, 0, 1).applyQuaternion(ws.mesh.quaternion);
+      expect(n.x).toBeCloseTo(-1, 6);
+      ws.update(0, [{ kind: 'rect', x: 0, y: 0, w: 1, h: 1, color: '#000' }], 10);
+      expect(mat.map!.version).toBeGreaterThan(0);
+      ws.dispose();
+      expect(ws.mesh.parent).toBeNull();
+    } finally { g.document = prev; }
   });
 });

@@ -10,6 +10,7 @@ export interface CarVisual {
   group: THREE.Group;
   wheels: { fl: THREE.Object3D; fr: THREE.Object3D; rl: THREE.Object3D; rr: THREE.Object3D };
   flap: THREE.Object3D;
+  steeringWheel: THREE.Object3D;   // grupo del volante: el host añade aquí la pantalla de instrumentos en VR (b20 D4)
   update(car: CarState, dtS: number): void;
 }
 
@@ -207,7 +208,7 @@ export function buildCar(cfg: GameConfig = config): CarVisual {
     body.rotation.x = rollDeg * DEG;
   };
 
-  return { group, wheels: { fl: fl.w, fr: fr.w, rl: rl.w, rr: rr.w }, flap, update };
+  return { group, wheels: { fl: fl.w, fr: fr.w, rl: rl.w, rr: rr.w }, flap, steeringWheel: steer, update };
 }
 
 function V2(x: number, y: number): THREE.Vector2 { return new THREE.Vector2(x, y); }
