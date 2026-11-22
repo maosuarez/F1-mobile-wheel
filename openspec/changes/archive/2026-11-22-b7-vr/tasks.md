@@ -33,7 +33,7 @@
 
 - [x] 6.1 (worker-sonnet, skill `webapp-testing`) Escritorio sin cambios: `tests/e2e/b7_desktop.py` sin errores de consola en `/?debug=1`, botón "Entrar en VR" oculto, `?quality=high` con la misma calidad y draw calls que antes del cambio. Verificación: el script sale con código 0 y deja capturas en `out/`.
 - [x] 6.2 (worker-sonnet, skill `threejs-qa-release`) Revisión de presupuesto VR: con `navigator.xr` simulado en Playwright (sin visor), comprobar que el perfil `VR_QUALITY` se aplica al entrar y que el F3 muestra el total de draw calls. Verificación: script de 6.1 en verde y `npx vitest run` en verde.
-- [ ] 6.3 Revisión con `code-review-graph` (`detect_changes` y `get_review_context` sobre los archivos de este change) y commit Conventional Commits del bloque. Verificación: `git log -1` muestra `feat(vr): ...`.
+- [x] 6.3 Revisión con `code-review-graph` (`detect_changes` y `get_review_context` sobre los archivos de este change) y commit Conventional Commits del bloque. Verificación: `git log -1` muestra `feat(vr): ...`.
 
 ## Workflow follow-up
 

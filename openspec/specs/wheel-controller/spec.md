@@ -1,10 +1,9 @@
-# Spec Delta
+# wheel-controller Specification
 
 ## Purpose
-
 Página web que convierte un celular Android en el volante del juego: lee la inclinación y los toques, los envía al PC y muestra la telemetría como la pantalla de un volante de competición.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Puesta en marcha con un toque
 La página `/wheel/?room=<código>` SHALL mostrar "Toca para empezar" y, con el primer toque, pedir pantalla completa, bloquear la orientación en horizontal, impedir que la pantalla se apague, empezar a leer el sensor de movimiento y conectarse a la sala. El fallo de cualquiera de esas peticiones MUST NOT impedir que el volante funcione.
@@ -92,11 +91,11 @@ El acelerador (derecha) y el freno (izquierda) SHALL ser zonas táctiles cuyo va
 - **THEN** no hay desplazamiento, zoom, selección de texto ni menú contextual
 
 ### Requirement: Levas y botones
-La interfaz SHALL ofrecer leva izquierda (bajar marcha), leva derecha (subir marcha), DRS, cámara, "Centrar", pausa, ERS (mantenido) e interruptor de vibración, con respuesta visual inmediata al toque.
+La interfaz SHALL ofrecer leva izquierda (bajar marcha), leva derecha (subir marcha), cámara, "Centrar", pausa e interruptor de vibración, con respuesta visual inmediata al toque. DRS y ERS se accionan agitando el celular (ver `wheel-ui`), no con botones.
 
-#### Scenario: ERS mantenido
-- **WHEN** se mantiene pulsado ERS 1 s
-- **THEN** los `in` de ese intervalo llevan `ers = true` y, al soltar, `false`
+#### Scenario: Leva
+- **WHEN** se toca la leva derecha
+- **THEN** se envía un único `ev` `up`
 
 #### Scenario: Respuesta visual
 - **WHEN** se toca cualquier botón

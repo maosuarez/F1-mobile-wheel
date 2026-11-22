@@ -1,10 +1,9 @@
-# Spec Delta
+# vr-mode Specification
 
 ## Purpose
-
 Permite ver y conducir el juego en un visor WebXR (Meta Quest) como módulo opcional, sin alterar el modo de escritorio ni el volante del celular.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Disponibilidad del modo VR
 El host SHALL mostrar el botón "Entrar en VR" solo cuando el navegador soporte sesiones WebXR inmersivas (`immersive-vr`) y la página esté en contexto seguro. En cualquier otro caso el botón MUST NOT mostrarse y el juego SHALL funcionar exactamente como antes.
@@ -43,11 +42,11 @@ La cámara de la sesión SHALL seguir la pose de la cámara elegida en el rig de
 - **THEN** la vista gira con la cabeza y la posición del coche sigue a la del rig
 
 ### Requirement: HUD en el espacio 3D
-En VR el HUD SHALL mostrarse como un panel en el espacio 3D, anclado delante del jugador, con velocidad en km/h, marcha, número de vuelta, tiempo de la vuelta en curso, última y mejor vuelta. El panel MUST NOT ocupar la zona central de la visión.
+En VR el HUD SHALL mostrarse como un panel en el espacio 3D, anclado delante del jugador, que MUST NOT ocupar la zona central de la visión. Su contenido según modo y cámara (y los instrumentos en el volante con cámara de casco) lo define `vr-cockpit-hud`.
 
 #### Scenario: Lectura en el visor
-- **WHEN** el jugador conduce en VR
-- **THEN** el panel muestra los mismos valores que el HUD de escritorio con el formato `m:ss.mmm`, sin solapes, dentro del campo de visión inferior
+- **WHEN** el jugador conduce en VR en Práctica con una cámara que no es la de casco
+- **THEN** el panel muestra velocidad, marcha y tiempos con el formato `m:ss.mmm`, sin solapes, dentro del campo de visión inferior
 
 ### Requirement: Mandos como fuente de entrada
 Los mandos WebXR SHALL poder conducir el coche como fuente de entrada alternativa al volante del celular y al teclado. El gatillo derecho SHALL acelerar, el gatillo izquierdo SHALL frenar, y el ángulo de roll del mando derecho SHALL dar la dirección con la misma rampa que el teclado. Mientras el volante del celular esté conectado, MUST tener prioridad sobre los mandos.
