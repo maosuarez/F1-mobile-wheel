@@ -242,6 +242,8 @@ def build_terrain(ctx: dict, margin: float) -> dict:
     t = np.clip((ed - flat) / (blend - flat), 0, 1)
     w = t * t * (3 - 2 * t)
     # solapes: en la zona de muros (+cell) de varios tramos manda el más bajo
+    trans = np.zeros(len(pts), bool)  # celdas cuya zona (+2 celdas) toca otro tramo
+    lim = np.full(len(pts), np.inf)  # cota máxima en celdas de solape (la interpolación usa también a las vecinas)
     for k, (c, c0) in enumerate(zip(covering(ctx, pts, flat), covering(ctx, pts, flat))):
         if len(c):
             ds = np.abs(c0 - near[k])
@@ -249,7 +251,17 @@ def build_terrain(ctx: dict, margin: float) -> dict:
             other = c0[ds > 60.0]  # otro tramo (>60 m a lo largo de la pista) con la celda dentro de sus muros
             h_trk[k] = (min(sm["y"][near[k]], sm["y"][other].min()) if len(other) else sm["y"][near[k]]) - WD["terrainSinkM"]
             w[k] = 0.0
+            if len(other):
+                lim[k] = h_trk[k] + WD["terrainSinkM"] - 0.15
     h = h_trk * (1 - w) + h_dem * w
+    if np.isfinite(lim).any():
+        from scipy.ndimage import minimum_filter
+        cap = minimum_filter(lim.reshape(nz, nx), size=3, mode="nearest").ravel()
+        for k in np.flatnonzero(np.isfinite(cap) & (cap < h) & (h - cap <= 2.0)):  # desnivel pequeño: horquillas, no pasos a distinto nivel
+            cb = covering(ctx, pts[k:k + 1], 1.5 * flat)[0]
+            dd = np.abs(cb - near[k]); dd = np.minimum(dd, len(sm["x"]) - dd) * float(ctx["trk"]["step_m"])
+            trans[k] = bool((dd > 60.0).any())
+        h = np.where(trans, np.minimum(h, cap), h)
     return dict(x0=float(x0), z0=float(z0), cell=float(cell), nx=nx, nz=nz, h=np.round(h * 10).astype(int))
 
 

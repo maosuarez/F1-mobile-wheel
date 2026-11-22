@@ -1,0 +1,7 @@
+{
+  "runoffs": [
+    {"s0": 290, "s1": 470, "side": "left", "type": "asphalt"},
+    {"s0": 6680, "s1": 6860, "side": "left", "type": "asphalt"},
+    {"s0": 6680, "s1": 6860, "side": "right", "type": "asphalt"}
+  ]
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import raw from '../public/track/interlagos.json';
+import spaRaw from '../public/track/spa.json';
 import { config } from '../src/shared/config';
 import { Autopilot } from '../src/sim/autopilot';
 import { Simulation } from '../src/sim/simulation';
@@ -7,14 +8,16 @@ import type { DriverCommand, DriverInput } from '../src/sim/types';
 import { NEUTRAL_INPUT } from '../src/sim/types';
 import { parseTrackJson } from '../src/track/schema';
 import { buildTrack } from '../src/track/track';
+import type { Track } from '../src/track/types';
 
 const track = buildTrack(parseTrackJson(raw));
+const spa = buildTrack(parseTrackJson(spaRaw));
 
 // Conduce con el piloto de referencia hasta completar 2 vueltas (máx. 400 s), con `delaySteps` de latencia.
-function drive(delaySteps = 0) {
+function drive(delaySteps = 0, trk: Track = track) {
   const cfg = structuredClone(config);
-  const sim = new Simulation(track, cfg);
-  const pilot = new Autopilot(track, cfg);
+  const sim = new Simulation(trk, cfg);
+  const pilot = new Autopilot(trk, cfg);
   const queue: { input: DriverInput; commands: DriverCommand[] }[] =
     Array.from({ length: delaySteps }, () => ({ input: NEUTRAL_INPUT, commands: [] }));
   const laps: number[] = [];
@@ -82,5 +85,23 @@ describe('Piloto de referencia en Interlagos', () => {
   it('determinismo: tiempos idénticos en dos ejecuciones', () => {
     const d = drive();
     expect(d.laps).toEqual(r.laps);
+  });
+});
+
+describe('Piloto de referencia en Spa', () => {
+  const r = drive(0, spa);
+
+  it('dos vueltas completas', () => {
+    console.info(`Spa: vueltas ${r.laps.map((t) => t.toFixed(3)).join(' / ')} s, vmax ${(r.maxSpeed * 3.6).toFixed(1)} km/h, muros ${r.wallHits}, hierba en s=${r.grassAtS}, DRS ${r.drsOpens}, marcha máx ${r.maxGear}`);
+    expect(r.laps.length).toBe(2);
+  });
+
+  it('vuelta lanzada entre 95 y 150 s', () => {
+    expect(r.laps[1]).toBeGreaterThanOrEqual(95);
+    expect(r.laps[1]).toBeLessThanOrEqual(150);
+  });
+
+  it('vuelta lanzada: el DRS se abre al menos una vez', () => {
+    expect(r.drsOpens).toBeGreaterThanOrEqual(1);
   });
 });

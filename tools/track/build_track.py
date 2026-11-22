@@ -107,6 +107,8 @@ def resample_closed(xy: np.ndarray, widths: np.ndarray, step: float = 2.0) -> Ce
     for c in range(2):
         w = np.tile(widths[:, c], 3)
         out.append(np.interp(uu, ue, w))
+    deficit = np.maximum(8.0 - (out[0] + out[1]), 0.0) / 2  # ancho total mínimo 8 m (TUMFTM de Spa baja a 7,9)
+    out = [out[0] + deficit, out[1] + deficit]
     return Centerline(np.stack([x, y], axis=1), out[0], out[1], tan, k, step_m, length)
 
 

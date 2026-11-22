@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import raw from '../public/track/interlagos.json';
+import spaRaw from '../public/track/spa.json';
 import { config } from '../src/shared/config';
 import { rivalSkill } from '../src/sim/rival';
 import type { AiLevel } from '../src/sim/rival';
@@ -106,4 +107,17 @@ describe('Tráfico y adelantamientos', () => {
     };
     expect(run()).toEqual(run());
   }, 60_000);
+});
+
+describe('Rivales en Spa', () => {
+  it('10 IA en medio, 5 vueltas: todos terminan', () => {
+    const spa = buildTrack(parseTrackJson(spaRaw));
+    const r = runAiRace(spa, new Array(10).fill('medium'), config, 1);
+    const st = r.rs.standings();
+    console.info(`Spa 10 IA: muros máx ${Math.max(...r.wallHits)}, fuera máx ${Math.max(...r.offS).toFixed(2)} s, `
+      + `ganador ${st[0].id} en ${st[0].totalTimeS?.toFixed(2)} s, último ${st[9].totalTimeS?.toFixed(2)} s, mejor vuelta ${Math.min(...r.lapTimes.flat()).toFixed(2)} s`);
+    expect(r.rs.phase).toBe('finished');
+    expect(st.every((s) => s.finished)).toBe(true);
+    expect(r.nonFinite).toBe(false);
+  }, 180_000);
 });

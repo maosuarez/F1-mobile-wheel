@@ -231,6 +231,12 @@ def main() -> int:
         check(m2 <= y[0] - 15 and mp > 0.02, "subida de boxes (>=15 m, pitch medio 3200-3800 >0.02)",
               f"min={m2:.2f} pitch={mp:.4f}")
 
+    if d["id"] == "spa":
+        check(70 <= rng <= 130, "desnivel total en [70,130]", f"{rng:.1f}")
+        from scipy.signal import savgol_filter
+        gs = savgol_filter(np.gradient(y, st), 31, 2, mode="wrap")  # ventana ~62 m
+        check(np.abs(gs).max() <= 0.20, "pendiente máx. suavizada <= 20 %", f"{np.abs(gs).max() * 100:.1f} %")
+
     # metadatos
     sec = d["sectors_s"]
     ok = len(sec) == 2 and 0 < sec[0] < sec[1] < L and min(sec[0], sec[1] - sec[0], L - sec[1]) >= 0.15 * L
