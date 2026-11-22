@@ -21,10 +21,10 @@ def tel(w, drs=0, extra=""):
 
 
 def shake(w, g=(9.81, 0)):
-    # dos picos alternos de 20 m/s² separados 150 ms reales, en recta; luego deja pasar el enfriamiento
-    w.evaluate(f"window.__wheel.injectMotion(20, 0, 0, {g[0]}, {g[1]}, performance.now())")
+    # dos picos alternos de 20 m/s² en Z separados 150 ms reales, en recta; luego deja pasar el enfriamiento
+    w.evaluate(f"window.__wheel.injectMotion(0, 0, 20, {g[0]}, {g[1]}, performance.now())")
     w.wait_for_timeout(150)
-    w.evaluate(f"window.__wheel.injectMotion(-20, 0, 0, {g[0]}, {g[1]}, performance.now())")
+    w.evaluate(f"window.__wheel.injectMotion(0, 0, -20, {g[0]}, {g[1]}, performance.now())")
     w.wait_for_timeout(1000)
 
 
@@ -76,7 +76,7 @@ def main():
             b3.check("(b) freno > 0,3: ers false", True)
             t.up(1)
             n = evs(w, "drs")
-            w.evaluate("(() => { const t = performance.now(); window.__wheel.injectMotion(25, 0, 0, 9.81, 0, t); })()")
+            w.evaluate("(() => { const t = performance.now(); window.__wheel.injectMotion(0, 0, 25, 9.81, 0, t); })()")
             w.wait_for_timeout(300)
             b3.check("(b) pico único: sin efecto", evs(w, "drs") == n and ers(w) is False)
             b3.tilt(w, 35)
@@ -87,6 +87,31 @@ def main():
             w.wait_for_timeout(500)
             b3.check("(b) curva: no envía drs", evs(w, "drs") == n)
             b3.tilt(w, 0)
+
+            # (b2) b21: picos alternos en X (giro brusco) sin efecto; steer sigue a la gravedad sin retención
+            w.wait_for_timeout(1000)
+            tel(w, 1)
+            for i in range(4):
+                a = 25 if i % 2 == 0 else -25
+                w.evaluate(f"window.__wheel.injectMotion({a}, 0, 0, 9.81, 0, performance.now())")
+                w.wait_for_timeout(120)
+            w.wait_for_timeout(300)
+            b3.check("(b2) picos alternos en X: sin drs", evs(w, "drs") == n)
+            b3.check("(b2) picos alternos en X: ers no cambia", ers(w) is False)
+            b3.tilt(w, 35)
+            w.wait_for_timeout(500)
+            s35 = w.evaluate("window.__wheel.lastIn().steer")
+            g35 = (9.81 * math.sin(r), 9.81 * math.cos(r))
+            for i in range(3):
+                a = 25 if i % 2 == 0 else -25
+                w.evaluate(f"window.__wheel.injectMotion({a}, 0, 0, {g35[0]}, {g35[1]}, performance.now())")
+                w.wait_for_timeout(100)
+            s35b = w.evaluate("window.__wheel.lastIn().steer")
+            b3.check("(b2) steer estable con picos en X", abs(s35b - s35) <= 0.02 and abs(s35) > 0.2, f"{s35:.3f} -> {s35b:.3f}")
+            b3.tilt(w, 0)
+            w.wait_for_timeout(200)
+            s0 = w.evaluate("window.__wheel.lastIn().steer")
+            b3.check("(b2) steer sigue a la gravedad sin retención", abs(s0) < 0.1, f"{s0:.3f}")
 
             # (c) modo VR
             tel(w, 0, ", vr: true")

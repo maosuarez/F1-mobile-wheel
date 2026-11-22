@@ -51,12 +51,13 @@ function setState(s: State): void {
   (document.getElementById('cover-noroom') as HTMLElement).hidden = s !== 'no-room';
 }
 
-// lin: aceleración lineal para el detector; gx/gy: gravedad para el estimador de dirección
-function handleMotion(lin: [number, number, number], withGravity: boolean, gx: number, gy: number, tMs: number): void {
+// az: aceleración lineal en Z para el detector (o gz con gravedad si no hay `acceleration`);
+// gx/gy: gravedad para el estimador de dirección
+function handleMotion(az: number, gz: number | undefined, gx: number, gy: number, tMs: number): void {
   const angle = screen.orientation?.angle ?? (window as { orientation?: number }).orientation ?? 90;
-  const s = shake.update(lin[0], lin[1], lin[2], tMs, withGravity);
+  const s = shake.update(az, tMs, gz);
   const r = estimator.update(gx, gy, angle, tMs);
-  if (!s.active) steer = r.steer;       // dirección congelada durante la sacudida
+  steer = r.steer;
   display.setFlat(r.flat);
   if (s.shake) {
     const a = shakeAction(lastDrs, steer, ers, w.shake);
@@ -70,8 +71,8 @@ function onMotion(e: DeviceMotionEvent): void {
   const g = e.accelerationIncludingGravity;
   if (!g || g.x == null || g.y == null) return;
   const a = e.acceleration;
-  const lin = a && a.x != null && a.y != null && a.z != null;
-  handleMotion(lin ? [a.x!, a.y!, a.z!] : [g.x, g.y, g.z ?? 0], !lin, g.x, g.y, performance.now());
+  if (a && a.z != null) handleMotion(a.z, undefined, g.x, g.y, performance.now());
+  else handleMotion(0, g.z ?? 0, g.x, g.y, performance.now());
 }
 
 const calCover = document.getElementById('cover-cal') as HTMLElement;
@@ -165,7 +166,8 @@ if (debug) {
     vibrations,
     evs,
     lastEv: () => evs[evs.length - 1] ?? null,
-    injectMotion: (ax: number, ay: number, az: number, gx: number, gy: number, tMs: number) => handleMotion([ax, ay, az], false, gx, gy, tMs),
+    // b21 D3: ax/ay se ignoran para la sacudida (firma mantenida para los E2E)
+    injectMotion: (_ax: number, _ay: number, az: number, gx: number, gy: number, tMs: number) => handleMotion(az, undefined, gx, gy, tMs),
     injectTel: handleTel,
   };
 }

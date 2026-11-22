@@ -75,15 +75,15 @@ def main():
             w.wait_for_selector('[data-testid="menu-panel"]', state="hidden", timeout=5000)
             b3.check("☰ abre y cierra", True)
 
-            # pedal intacto al agitar con DRS listo (b20): injectTel drs=1 + dos picos alternos en recta
+            # pedal intacto al agitar con DRS listo (b20): injectTel drs=1 + dos picos alternos en Z en recta
             t.down(1, *b3.pedal_point(w, "pedal-thr", 0.9))
             host.wait_for_function("window.__f1.snapshot().inputApplied.thr > 0.5", timeout=20000)
             d0 = evs(w, "drs")
             w.evaluate("""(() => {
               const W = window.__wheel, t = performance.now();
               W.injectTel({t: 'tel', spd: 200, gear: 6, rpm: 0, leds: 0, drs: 1, ers: 0.5, ot: false, lap: 1, delta: null, warn: '', echo: 0, hold: 0});
-              W.injectMotion(20, 0, 0, 9.81, 0, t);
-              W.injectMotion(-20, 0, 0, 9.81, 0, t + 150);
+              W.injectMotion(0, 0, 20, 9.81, 0, t);
+              W.injectMotion(0, 0, -20, 9.81, 0, t + 150);
             })()""")
             w.wait_for_function(f"window.__sent.filter(m => m.k === 'drs').length === {d0 + 1}", timeout=5000)
             w.wait_for_timeout(500)

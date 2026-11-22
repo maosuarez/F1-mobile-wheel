@@ -140,7 +140,7 @@ export const config = {
            pedalMode: 'analog' as 'analog' | 'digital', pedalRampMs: 120,
            haptics: { minGapMs: 80, patterns: { shift: [12], kerb: [25], grass: [40, 30, 40], limits: [120], limiter: [8] } },
            // b20 design D2: detector de sacudidas (DRS/ERS)
-           shake: { peakMs2: 14, windowMs: 450, peaks: 2, cooldownMs: 900, straightSteer: 0.2, ersOffBrake: 0.3, freezeMs: 350 } },
+           shake: { peakMs2: 14, windowMs: 450, peaks: 2, cooldownMs: 900, straightSteer: 0.2, ersOffBrake: 0.3 } },
 };
 
 export type GameConfig = typeof config;
