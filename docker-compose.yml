@@ -4,14 +4,14 @@
 # HTTPS (necesario para WebXR y wss en el celular) con cloudflared:
 #   cloudflared tunnel --url http://localhost:28473
 #   o en config.yml del tunel: ingress -> service: http://localhost:28473
-# Luego define PUBLIC_URL=https://tu-dominio para que el QR use esa URL.
+# PUBLIC_URL por defecto: https://f1.maosuarez.com (los QR usan esa URL; se puede sobrescribir).
 services:
   game:
     build: .
     ports:
       - "${HOST_PORT:-28473}:8000"
     environment:
-      PUBLIC_URL: "${PUBLIC_URL:-}"
+      PUBLIC_URL: "${PUBLIC_URL:-https://f1.maosuarez.com}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/info', timeout=2)"]
