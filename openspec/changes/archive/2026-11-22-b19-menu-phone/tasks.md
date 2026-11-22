@@ -17,7 +17,7 @@
 ## 4. Verificación y cierre
 
 - [x] 4.1 E2E `tests/e2e/b19_menu_phone.py` (Playwright, puertos limpios según la memoria del proyecto): (a) menú a 1280×720 y 360×740 sin scroll horizontal, `menu-mode-race` + flecha izquierda + Enter arranca carrera; (b) contexto móvil (`is_mobile=True`, `has_touch=True`, UA Android Chrome) → `open-wheel` y `menu-open-wheel` visibles; UA con `OculusBrowser` → ocultos; escritorio → ocultos; (c) dos páginas online: la que crea la sala muestra `lobby-join-qr` con `data-url` que contiene `online=join&code=`; en carrera, O muestra `overlay-qr` con `qr-room-closed` visible, O lo oculta, y `simTimeS` siguió avanzando. Sin errores de consola. Verificar: `.venv/bin/python tests/e2e/b19_menu_phone.py` sale con 0.
-- [ ] 4.2 Cierre (Fable): `npx vitest run` en verde, E2E 4.1 en verde, `code-review-graph build` + `detect_changes`, commit Conventional Commits vía `commit-orchestrator` (`feat(host): menú de modo con estética de retransmisión, acceso al volante en celular y QR online`).
+- [x] 4.2 Cierre (Fable): `npx vitest run` en verde, E2E 4.1 en verde, `code-review-graph build` + `detect_changes`, commit Conventional Commits vía `commit-orchestrator` (`feat(host): menú de modo con estética de retransmisión, acceso al volante en celular y QR online`).
 
 ## Workflow follow-up
 
