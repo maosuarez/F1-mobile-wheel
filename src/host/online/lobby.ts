@@ -1,6 +1,7 @@
 import { config as defaultConfig, type GameConfig } from '../../shared/config';
 import { RACE_NAME_MAX, type NetCfg, type NetResRow } from '../../shared/protocol';
 import { driverAt } from '../../shared/teams';
+import { trackById } from '../../shared/tracks';
 import type { Standing } from '../../sim/race';
 import { loadOnlineName, saveOnlineName } from '../storage';
 import {
@@ -119,6 +120,8 @@ export interface LobbyRunOptions {
   laps: number;
   seed: () => number;                           // semilla de la carrera (una por vestíbulo)
   wheelCode: string | null;                     // sala del volante de este PC (se empareja como siempre)
+  // b17 D4: el propietario eligió otro circuito (cfg.track ≠ track cargado): recargar con ?track= y volver a la sala
+  onTrackMismatch?: (track: string, code: string, name: string) => void;
   makeClient?: (code: string, name: string) => OnlineClient;
 }
 
@@ -207,10 +210,11 @@ export class LobbyView {
     this.offs = [
       c.on('lobby', () => { this.maybeAutostart(); this.render(); }),
       c.on('status', () => this.render()),
-      c.on('cfg', (cfg) => { this.cfgSeen = cfg; this.render(); }),
+      c.on('cfg', (cfg) => { this.cfgSeen = cfg; if (!this.checkTrack(c, cfg.track)) this.render(); }),
       c.on('owner', () => { this.configure(); this.render(); }),
       c.on('close', (code) => { if (this.client === c) { this.detach(); this.error = closeText(code); this.render(); } }),
       c.on('start', (cfg, atSrv) => {
+        if (this.checkTrack(c, cfg.track)) return;
         const resolve = this.done;
         this.detach(false);
         this.done = null;
@@ -219,6 +223,17 @@ export class LobbyView {
     ];
     this.render();
     c.connect();
+  }
+
+  // Circuito del propietario distinto del cargado: sale de la sala y pide recargar (o error si el id es desconocido).
+  // true si no coincide (el vestíbulo deja de usar este cliente).
+  private checkTrack(c: OnlineClient, track: string): boolean {
+    const o = this.opts;
+    if (!o || track === o.track) return false;
+    this.detach();
+    if (trackById(track) && o.onTrackMismatch) o.onTrackMismatch(track, c.code, this.name);
+    else { this.error = `Circuito desconocido: ${track}`; this.render(); }
+    return true;
   }
 
   // Quita los oyentes del vestíbulo; close: cierra también la conexión
@@ -285,14 +300,15 @@ export class LobbyView {
       const max = maxLobbyRivals(c.players.length, this.cfg), rv = clampLobbyRivals(this.rivals, c.players.length, this.cfg);
       const opt = (act: string, val: string | number, label: string, on: boolean) =>
         `<button type="button" class="menu-opt" data-act="${act}" data-val="${val}" data-testid="lobby-${act}-${val}" aria-pressed="${on}">${label}</button>`;
-      ctrl = `<div class="menu-row"><span class="menu-k">Rivales IA</span><div class="menu-opts">${
+      ctrl = `<div class="lobby-wait" data-testid="lobby-track">Circuito: ${esc(trackById(this.opts?.track ?? '')?.name ?? this.opts?.track ?? '')}</div>
+        <div class="menu-row"><span class="menu-k">Rivales IA</span><div class="menu-opts">${
         Array.from({ length: max + 1 }, (_, i) => opt('rivals', i, String(i), rv === i)).join('')}</div></div>
         <div class="menu-row"><span class="menu-k">Dificultad</span><div class="menu-opts">${
         AI_LEVELS.map((l) => opt('ai', l, AI_LABEL[l], this.ai === l)).join('')}</div></div>
         <button type="button" class="menu-start" data-act="start" data-testid="lobby-start"${lobbyCanStart(c) ? '' : ' disabled'}>Empezar</button>`;
     } else {
       const k = this.cfgSeen;
-      ctrl = `<div class="lobby-wait" data-testid="lobby-wait">Esperando al propietario${k ? ` · ${k.rivals} rivales IA · ${AI_LABEL[k.ai]}` : ''}</div>`;
+      ctrl = `<div class="lobby-wait" data-testid="lobby-wait">Esperando al propietario${k ? ` · ${esc(trackById(k.track)?.name ?? k.track)} · ${k.rivals} rivales IA · ${AI_LABEL[k.ai]}` : ''}</div>`;
     }
     this.root.innerHTML = `<div class="menu-card lobby-card" data-testid="lobby">
       <div class="menu-title">Sala <span class="lobby-code" data-testid="lobby-room">${esc(c.code)}</span></div>

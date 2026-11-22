@@ -1,15 +1,18 @@
 import type { RaceChoice } from '../storage';
+import { TRACKS, trackById } from '../../shared/tracks';
 
 // Menú de modo (b14 D7): Modo, Dificultad y Rivales (1–9). La lógica (modelo, acciones de teclado/mando/volante) es pura
 // y testeable; RaceMenu solo pinta el DOM y resuelve la promesa con la elección.
 
-export type MenuRow = 'mode' | 'ai' | 'rivals' | 'players';
+export type MenuRow = 'track' | 'mode' | 'ai' | 'rivals' | 'players';
 // prev/next: cambia de fila; dec/inc: cambia el valor de la fila (con vuelta en modo y dificultad); cycle: siguiente valor con vuelta;
 // confirm: empezar
 export type MenuAction = 'prev' | 'next' | 'dec' | 'inc' | 'cycle' | 'confirm';
-export interface MenuModel { choice: RaceChoice; row: number }
+export interface MenuModel { choice: MenuChoice; row: number }
 // Resultado del menú: la elección, u `online` si se pulsó "Online" (b16 D7: abre el vestíbulo)
-export type MenuResult = RaceChoice & { online?: boolean };
+export type MenuResult = MenuChoice & { online?: boolean };
+// Elección del menú: la de carrera más el circuito (b17 D4; no se guarda en RaceChoice, se recarga con ?track=)
+export type MenuChoice = RaceChoice & { track?: string };
 
 // Online y pantalla dividida no se combinan: con 2 jugadores la opción Online está deshabilitada
 export function menuOnlineEnabled(c: RaceChoice): boolean { return c.players !== 2; }
@@ -22,16 +25,21 @@ const MODE_LABEL: Record<RaceChoice['mode'], string> = { practice: 'Práctica', 
 const LEVEL_LABEL: Record<RaceChoice['ai'], string> = { easy: 'Fácil', medium: 'Media', hard: 'Difícil' };
 
 // Filas visibles: en práctica no hay rivales ni dificultad
-// 'players' (b15) solo aparece si la elección lo define (el menú siempre lo fija)
-export function menuRows(c: RaceChoice): MenuRow[] {
+// 'players' (b15) solo aparece si la elección lo define (el menú siempre lo fija); 'track' (b17), igual, y va primero
+export function menuRows(c: MenuChoice): MenuRow[] {
   const rows: MenuRow[] = c.mode === 'race' ? ['mode', 'ai', 'rivals'] : ['mode'];
-  return c.players === undefined ? rows : [...rows, 'players'];
+  const all: MenuRow[] = c.players === undefined ? rows : [...rows, 'players'];
+  return c.track === undefined ? all : ['track', ...all];
 }
 
 const wrap = (i: number, n: number) => ((i % n) + n) % n;
 
-function shiftValue(c: RaceChoice, row: MenuRow, d: number): RaceChoice {
+function shiftValue(c: MenuChoice, row: MenuRow, d: number): MenuChoice {
   switch (row) {
+    case 'track': {
+      const i = TRACKS.findIndex((t) => t.id === c.track);
+      return { ...c, track: TRACKS[wrap((i < 0 ? 0 : i) + d, TRACKS.length)].id };
+    }
     case 'mode': return { ...c, mode: MODES[wrap(MODES.indexOf(c.mode) + d, MODES.length)] };
     case 'ai': return { ...c, ai: LEVELS[wrap(LEVELS.indexOf(c.ai) + d, LEVELS.length)] };
     case 'rivals': return { ...c, rivals: Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, c.rivals + d)) };
@@ -46,7 +54,8 @@ export function menuInitial(saved: RaceChoice | null, fallback: RaceChoice): Men
 // Fija un valor concreto (clic): vuelve a una fila válida si el modo cambia
 export function menuSet(m: MenuModel, row: MenuRow, value: string | number): MenuModel {
   const c = { ...m.choice };
-  if (row === 'mode' && (value === 'practice' || value === 'race')) c.mode = value;
+  if (row === 'track') { if (typeof value === 'string' && trackById(value)) c.track = value; }
+  else if (row === 'mode' && (value === 'practice' || value === 'race')) c.mode = value;
   else if (row === 'ai' && (value === 'easy' || value === 'medium' || value === 'hard')) c.ai = value;
   else if (row === 'players') { if (value === 1 || value === 2 || value === '1' || value === '2') c.players = Number(value) as 1 | 2; }
   else if (row === 'rivals') c.rivals = Math.min(MAX_RIVALS, Math.max(MIN_RIVALS, Math.round(Number(value)) || MIN_RIVALS));
@@ -123,7 +132,7 @@ export class MenuPad {
   }
 }
 
-const ROW_TITLE: Record<MenuRow, string> = { mode: 'Modo', ai: 'Dificultad', rivals: 'Rivales', players: 'Jugadores' };
+const ROW_TITLE: Record<MenuRow, string> = { track: 'Circuito', mode: 'Modo', ai: 'Dificultad', rivals: 'Rivales', players: 'Jugadores' };
 
 export class RaceMenu {
   private model: MenuModel = { choice: { mode: 'practice', ai: 'medium', rivals: 9, players: 1 }, row: 0 };
@@ -136,8 +145,11 @@ export class RaceMenu {
     if (!e.repeat || a !== 'confirm') this.apply(a);
   };
 
+  private track: string | undefined;
   // poll: acciones de volante y mando acumuladas desde la última llamada
-  constructor(private readonly root: HTMLElement, private readonly poll: () => MenuAction[]) {
+  // onTrack: el jugador eligió otro circuito (b17 D4): quien llama recarga la página con ?track=
+  constructor(private readonly root: HTMLElement, private readonly poll: () => MenuAction[],
+              private readonly onTrack: (c: MenuChoice) => void = () => {}) {
     root.addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-row],[data-start],[data-online]');
       if (!el || !this.done) return;
@@ -145,12 +157,14 @@ export class RaceMenu {
       if (el.dataset.online !== undefined) { if (menuOnlineEnabled(this.model.choice)) this.finish(true); return; }
       this.model = menuSet(this.model, el.dataset.row as MenuRow, el.dataset.val ?? '');
       this.render();
+      this.checkTrack();
     });
   }
 
   // Muestra el menú y resuelve con la elección al confirmar
-  choose(initial: RaceChoice): Promise<MenuResult> {
+  choose(initial: MenuChoice): Promise<MenuResult> {
     this.model = { choice: { ...initial, players: initial.players ?? 1 }, row: 0 };
+    this.track = initial.track;
     this.render();
     return new Promise((resolve) => {
       this.done = resolve;
@@ -164,6 +178,17 @@ export class RaceMenu {
     if (a === 'confirm') { this.finish(false); return; }
     this.model = menuStep(this.model, a);
     this.render();
+    this.checkTrack();
+  }
+
+  // Circuito distinto del cargado: se cierra el menú y se avisa (la página se recarga)
+  private checkTrack(): void {
+    const t = this.model.choice.track;
+    if (!this.done || t === undefined || t === this.track) return;
+    this.done = null;
+    window.removeEventListener('keydown', this.onKey, true);
+    window.clearInterval(this.timer);
+    this.onTrack({ ...this.model.choice });
   }
 
   private finish(online: boolean): void {
@@ -181,6 +206,7 @@ export class RaceMenu {
     const btn = (r: MenuRow, val: string | number, label: string, on: boolean) =>
       `<button type="button" class="menu-opt" data-row="${r}" data-val="${val}" data-testid="menu-${r}-${val}" aria-pressed="${on}">${label}</button>`;
     const opts: Record<MenuRow, string> = {
+      track: TRACKS.map((t) => btn('track', t.id, t.name, choice.track === t.id)).join(''),
       mode: MODES.map((m) => btn('mode', m, MODE_LABEL[m], choice.mode === m)).join(''),
       ai: LEVELS.map((l) => btn('ai', l, LEVEL_LABEL[l], choice.ai === l)).join(''),
       rivals: Array.from({ length: MAX_RIVALS }, (_, i) => btn('rivals', i + 1, String(i + 1), choice.rivals === i + 1)).join(''),

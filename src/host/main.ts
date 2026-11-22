@@ -8,7 +8,8 @@ import { RaceController, parseRaceOptions, raceOptionDefaults, type RaceOptions 
 import { RivalsRender } from '../render/rivals';
 import { RivalAudio } from '../audio/rivals';
 import { TEAMS } from '../shared/teams';
-import { RaceMenu, MenuPad, wheelMenuActions } from './race/menu';
+import { loadTrackChoice, resolveTrackId, saveTrackChoice, trackById, trackUrl } from '../shared/tracks';
+import { RaceMenu, MenuPad, wheelMenuActions, type MenuChoice } from './race/menu';
 import { Tower, TOWER_HZ, towerEntries } from './race/tower';
 import { ResultsView, resultsModel } from './race/results';
 import { NEUTRAL_INPUT, type DriverCommand, type DriverInput } from '../sim/types';
@@ -92,6 +93,29 @@ function showError(e: unknown): void {
   setState('error');
 }
 
+// Circuito desconocido en ?track= (b17 D4): mensaje legible y botón para volver al menú sin el parámetro
+function showUnknownTrack(id: string): void {
+  const el = $('overlay-error');
+  el.textContent = '';
+  const msg = document.createElement('div');
+  msg.textContent = `Circuito desconocido: «${id}»`;
+  const back = document.createElement('a');
+  const u = new URL(window.location.href);
+  u.searchParams.delete('track');
+  back.href = u.toString();
+  back.className = 'menu-start';
+  back.dataset.testid = 'error-back';
+  back.textContent = 'Volver al menú';
+  el.append(msg, back);
+  setState('error');
+}
+
+// Recarga con otro circuito: se recuerda la elección (b17 D4)
+function reloadWithTrack(id: string, extra: Record<string, string | null> = {}): void {
+  saveTrackChoice(id);
+  window.location.href = trackUrl(window.location.href, id, extra);
+}
+
 async function fetchRelayInfo(): Promise<RelayInfo | null> {
   try {
     const r = await fetch('/api/info');
@@ -113,8 +137,10 @@ async function initWheelButton(): Promise<void> {
 void initWheelButton();
 
 async function start(): Promise<void> {
+  // Circuito (b17 D4): ?track= > elección recordada > interlagos. Id desconocido → error con vuelta al menú
+  const TRACK_ID = resolveTrackId(params.get('track'), loadTrackChoice());
+  if (!trackById(TRACK_ID)) { showUnknownTrack(TRACK_ID); return; }
   // Entorno real en paralelo con la pista (b12, design D7): null → entorno procedural
-  const TRACK_ID = 'interlagos';
   const [track, world] = await Promise.all([loadTrack(TRACK_ID), loadWorld(TRACK_ID)]);
   if (world) {
     const attr = $('attribution');
@@ -168,7 +194,13 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', markGesture, { once: true });
   const menuPad = new MenuPad(() => navigator.getGamepads?.() ?? []);
   const menuUi = new RaceMenu($('overlay-menu'), () => [
-    ...(wheel ? wheelMenuActions(wheel.takeCommands(), wheel.takeUiEvents()) : []), ...menuPad.poll()]);
+    ...(wheel ? wheelMenuActions(wheel.takeCommands(), wheel.takeUiEvents()) : []), ...menuPad.poll()],
+  (c: MenuChoice) => {
+    // Otro circuito: se guarda el resto de la elección y se recarga con ?track=
+    const { track: t, ...rest } = c;
+    saveRaceChoice(rest);
+    if (t) reloadWithTrack(t);
+  });
   const skipMenu = ['mode', 'rivals', 'ai', 'seed', 'players'].some((k) => params.has(k)) || useAutopilot || (debug && params.get('menu') !== '1');
   // Online (b16): `online=create|join` (parámetros en online/lobby.ts) abre el vestíbulo sin menú; no con players=2
   const urlOnline = parsePlayers(params) === 2 ? null : parseOnlineParams(params);
@@ -178,8 +210,8 @@ async function start(): Promise<void> {
     setState('menu');
     const prev = raceOpts && raceOpts.mode !== 'online' ? { mode: raceOpts.mode, ai: raceOpts.ai, rivals: raceOpts.rivals } : null;
     const saved = prev ?? loadRaceChoice() ?? { mode: 'practice', ai: 'medium', rivals: config.race.defaultRivals };
-    const c = await menuUi.choose({ ...saved, players: urlPlayers ?? loadRaceChoice()?.players ?? 1 });
-    const { online: wantsOnline, ...choice } = c;
+    const c = await menuUi.choose({ ...saved, players: urlPlayers ?? loadRaceChoice()?.players ?? 1, track: track.id });
+    const { online: wantsOnline, track: _t, ...choice } = c;
     saveRaceChoice(choice);
     players = c.players === 2 ? 2 : 1;
     if (wantsOnline) return { mode: 'online', rivals: c.rivals, ai: c.ai, seed: raceOptionDefaults(params).seed };
@@ -194,7 +226,9 @@ async function start(): Promise<void> {
       if (o.mode !== 'online') return o;
       setState('lobby');
       const r = await lobby.run({ params: skip ? urlOnline : null, track: track.id, laps: config.race.laps,
-        seed: () => raceOptionDefaults(params).seed, wheelCode: room0 ? room0.room : null });
+        seed: () => raceOptionDefaults(params).seed, wheelCode: room0 ? room0.room : null,
+        // Cliente con otro circuito que el del propietario: recarga y vuelve a la sala antes del semáforo
+        onTrackMismatch: (t, code, name) => reloadWithTrack(t, { online: 'join', code, name, autostart: null }) });
       if (r) { online = r; return { mode: 'online', rivals: r.cfg.rivals, ai: r.cfg.ai, seed: r.cfg.seed, laps: r.cfg.laps }; }
       skip = false;
     }
