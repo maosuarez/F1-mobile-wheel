@@ -37,7 +37,7 @@ Decodificadores con validación como el resto de `protocol.ts`; números a 3 dec
 - Clasificación local: por `laps`/`prog` de todos. Resultado oficial: el propietario reúne los `fin` y envía `res`; los demás muestran `res` cuando llega (si no llega en 10 s, muestran su clasificación local).
 
 ### D5. Salida sincronizada
-El propietario envía `cfg` y luego `start { atSrv: ahora + 3000 }` y `started`. Todos crean la `RaceSession` con la misma semilla y parrilla; el semáforo arranca cuando `nowSrv ≥ atSrv`; el apagado aleatorio sale de la semilla, así que es el mismo instante en todos (± error de reloj).
+El propietario envía `cfg` y luego `start { atSrv: ahora + 3000 }` y `started`. Todos crean la `RaceSession` con la misma semilla y parrilla; el semáforo arranca cuando `nowSrv ≥ atSrv`; el apagado aleatorio sale de la semilla, así que es el mismo instante en todos (± error de reloj). En online la fase de luces no avanza por pasos de simulación: cada fotograma se calcula `elapsed = (nowSrv − atSrv)/1000` y `RaceSession.syncLights(elapsed)` fija las luces encendidas y pasa a verde cuando `elapsed ≥ lightsOutAtS` (si no, un PC lento, cuya simulación va por detrás del tiempo real, apagaría más tarde). Offline sigue igual.
 
 ### D6. Abandonos
 Un jugador que cierra: su coche queda como retirado (DNF), se quita de la escena 2 s después. El propietario que se va: los demás marcan la IA como retirada; el nuevo propietario solo asume compilar `res`.
