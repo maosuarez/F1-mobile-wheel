@@ -126,11 +126,14 @@ def elem_rings(e: dict, ll) -> list[np.ndarray]:
     return join_rings(segs)
 
 
-def raceway_pieces(osm: dict, ll) -> tuple[list[np.ndarray], np.ndarray | None]:
+def raceway_pieces(osm: dict, ll, names: tuple[str, ...] = ()) -> tuple[list[np.ndarray], np.ndarray | None]:
     pieces, pit = [], None
     for e in osm["elements"]:
         t = e.get("tags", {})
         if e["type"] != "way" or t.get("highway") != "raceway" or t.get("sport") != "motor" or len(e["geometry"]) < 2:
+            continue
+        is_pit = t.get("service") == "pit_lane" or "pit" in t.get("name", "").lower()
+        if names and not is_pit and t.get("name") not in names:
             continue
         g = np.array([ll(q["lat"], q["lon"]) for q in e["geometry"]])
         if t.get("service") == "pit_lane" or "pit" in t.get("name", "").lower():
@@ -184,7 +187,7 @@ def prepare(spec: TrackSpec, trk: dict | None = None) -> dict:
     lat0, lon0 = (la0 + la1) / 2, (lo0 + lo1) / 2
     ll = lambda la, lo: project(la, lo, lat0, lon0)  # noqa: E731
     osm = fetch_osm(spec)
-    pieces, pit = raceway_pieces(osm, ll)
+    pieces, pit = raceway_pieces(osm, ll, spec.osm_raceway_names)
     src = chain_circuit(pieces)
     dst = resample(cxz, 2.0, closed=True)
     tr, _ = align_2d(src, dst)

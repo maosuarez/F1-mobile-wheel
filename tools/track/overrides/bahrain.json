@@ -1,0 +1,58 @@
+{
+ "runoffs": [
+  {
+   "s0": 794,
+   "s1": 848,
+   "side": "right",
+   "type": "asphalt"
+  },
+  {
+   "s0": 1536,
+   "s1": 1576,
+   "side": "left",
+   "type": "asphalt"
+  },
+  {
+   "s0": 1845,
+   "s1": 1925,
+   "side": "left",
+   "type": "asphalt"
+  },
+  {
+   "s0": 2203,
+   "s1": 2291,
+   "side": "left",
+   "type": "asphalt"
+  },
+  {
+   "s0": 2703,
+   "s1": 2723,
+   "side": "right",
+   "type": "asphalt"
+  },
+  {
+   "s0": 3402,
+   "s1": 3474,
+   "side": "right",
+   "type": "asphalt"
+  },
+  {
+   "s0": 3742,
+   "s1": 3888,
+   "side": "left",
+   "type": "asphalt"
+  },
+  {
+   "s0": 4009,
+   "s1": 4149,
+   "side": "left",
+   "type": "asphalt"
+  },
+  {
+   "s0": 4953,
+   "s1": 4989,
+   "side": "left",
+   "type": "asphalt"
+  }
+ ]
+}

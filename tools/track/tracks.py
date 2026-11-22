@@ -13,6 +13,7 @@ class TrackSpec:
     direction: str  # "ccw" | "cw"
     corner_names: dict[int, str]  # nº de curva -> nombre; el resto "Curva N"
     bbox: tuple[float, float, float, float] | None = None  # lat_min, lon_min, lat_max, lon_max
+    osm_raceway_names: tuple[str, ...] = ()  # si no vacío, solo vías raceway con ese name
 
 
 # Constantes del pipeline del entorno (design b12 D8)
@@ -55,6 +56,18 @@ TRACKS: dict[str, TrackSpec] = {
             15: "Stavelot", 17: "Blanchimont", 18: "Chicane", 19: "Chicane",
         },
         bbox=(50.420, 5.935, 50.450, 5.985),
+    ),
+    "bahrain": TrackSpec(
+        id="bahrain",
+        name="Bahrain International Circuit",
+        tumftm_csv="Sakhir.csv",
+        fastf1_event="Bahrain",
+        years=(2022, 2021),
+        official_length_m=5412.0,
+        direction="cw",
+        corner_names={},
+        bbox=(26.020, 50.500, 26.045, 50.525),
+        osm_raceway_names=("Grand Prix Circuit",),
     ),
     "monza": TrackSpec(
         id="monza",

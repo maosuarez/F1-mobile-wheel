@@ -76,6 +76,34 @@ def load_centerline(spec: TrackSpec) -> np.ndarray | None:
 
 
 SMOOTH_RMS_M = 0.4  # suavizado leve del spline
+K_LIMIT, K_TARGET, K_WIN, K_ITERS, K_BLEND = 0.12, 0.118, 3, 50, 0.5  # suavizado local de picos de curvatura (b18 D1)
+
+
+def _fd_curvature(xy: np.ndarray, step: float) -> tuple[np.ndarray, np.ndarray]:
+    """Tangente y curvatura por diferencias finitas centrales (polilínea cerrada, paso ~uniforme)."""
+    d1 = (np.roll(xy, -1, axis=0) - np.roll(xy, 1, axis=0)) / (2 * step)
+    d2 = (np.roll(xy, -1, axis=0) - 2 * xy + np.roll(xy, 1, axis=0)) / step ** 2
+    sp = np.hypot(d1[:, 0], d1[:, 1])
+    k = (d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0]) / sp ** 3
+    return d1 / sp[:, None], k
+
+
+def smooth_peaks(xy: np.ndarray, step: float) -> tuple[np.ndarray, bool]:
+    """Suaviza solo las muestras con |k| > K_LIMIT (ventana ±K_WIN) hasta |k| <= K_TARGET o K_ITERS."""
+    _, k = _fd_curvature(xy, step)
+    if np.abs(k).max() <= K_LIMIT:
+        return xy, False
+    xy = xy.copy()
+    for _ in range(K_ITERS):
+        mask = np.abs(k) > K_LIMIT
+        if not mask.any():
+            break
+        avg = sum(np.roll(xy, o, axis=0) for o in range(-K_WIN, K_WIN + 1)) / (2 * K_WIN + 1)
+        xy[mask] = (1 - K_BLEND) * xy[mask] + K_BLEND * avg[mask]  # mezcla parcial: promedio puro crea picos vecinos
+        _, k = _fd_curvature(xy, step)
+        if np.abs(k).max() <= K_TARGET:
+            break
+    return xy, True
 
 
 def resample_closed(xy: np.ndarray, widths: np.ndarray, step: float = 2.0) -> Centerline:
@@ -101,6 +129,12 @@ def resample_closed(xy: np.ndarray, widths: np.ndarray, step: float = 2.0) -> Ce
     sp = np.hypot(dx, dy)
     k = (dx * ddy - dy * ddx) / sp ** 3
     tan = np.stack([dx / sp, dy / sp], axis=1)
+    xy_s, changed = smooth_peaks(np.stack([x, y], axis=1), step_m)
+    if changed:  # recalcula longitud, paso, tangente y curvatura sobre la línea suavizada
+        length = polyline_len(xy_s)
+        step_m = length / n
+        tan, k = _fd_curvature(xy_s, step_m)
+        x, y = xy_s[:, 0], xy_s[:, 1]
     # anchos periódicos interpolados sobre el parámetro u de los puntos originales
     ue = np.concatenate([u[:-1] - 1.0, u[:-1], u[:-1] + 1.0])
     out = []
