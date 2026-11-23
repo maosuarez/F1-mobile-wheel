@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏁 F1 Mobile Wheel
+# 🏁 Pocket Paddock
 
 ### Your phone is the steering wheel. Your browser is the race track.
 
@@ -22,7 +22,7 @@ Scan a QR code, hold your phone like a wheel and race real-world circuits in 3D.
 
 <br>
 
-<img src="docs/media/spa-eau-rouge.png" alt="Climbing Eau Rouge at Spa-Francorchamps" width="85%">
+<img src="docs/media/cover.jpg" alt="Your phone is the wheel: Pocket Paddock" width="90%">
 
 </div>
 
@@ -39,7 +39,7 @@ Scan a QR code, hold your phone like a wheel and race real-world circuits in 3D.
 No accounts and no downloads. You can be racing in under 30 seconds.
 
 <div align="center">
-<img src="docs/media/phone-wheel.png" alt="Phone wheel interface: brake, throttle, paddles, DRS and ERS" width="70%">
+<img src="docs/media/phone-wheel.jpg" alt="Phone wheel interface: brake, throttle, paddles, DRS and ERS" width="70%">
 <br><sub><i>The phone wheel: brake and throttle pedals, shift paddles, DRS/ERS buttons, a live speedometer and RPM LEDs.</i></sub>
 </div>
 
@@ -74,7 +74,10 @@ Built from public racing-line data, OpenStreetMap and elevation models:
 | 🇧🇭 **Bahrain**, *night race* | Floodlights, desert run-off, heavy braking into Turn 1 |
 
 <div align="center">
-<img src="docs/media/bahrain-night.png" alt="Night race at Bahrain" width="85%">
+<img src="docs/media/bahrain-night.jpg" alt="Wheel-to-wheel night race at Bahrain" width="90%">
+<br><br>
+<img src="docs/media/lights-out.jpg" alt="Lights out at Interlagos with AI rivals" width="44.5%">&nbsp;
+<img src="docs/media/spa-eau-rouge.jpg" alt="Chasing at Spa-Francorchamps" width="44.5%">
 </div>
 
 ### 🏁 Game modes
@@ -86,7 +89,7 @@ Built from public racing-line data, OpenStreetMap and elevation models:
 - Keyboard and USB gamepad are supported as fallbacks.
 
 <div align="center">
-<img src="docs/media/menu.png" alt="Grand Prix menu" width="70%">
+<img src="docs/media/menu.jpg" alt="Grand Prix menu" width="70%">
 </div>
 
 ---
@@ -133,7 +136,7 @@ docker compose up -d --build
 ## 💬 Feedback welcome
 
 This is a personal project. It started at a **Claude Community game-dev workshop at Platzi (Bogotá)** and has grown through playtesting feedback ever since.
-Did it work on your phone? Did it feel right? Please [open an issue](https://github.com/maosuarez/F1-mobile-wheel/issues) or reach out on LinkedIn.
+Did it work on your phone? Did it feel right? Please [open an issue](https://github.com/maosuarez/pocket-paddock/issues) or reach out on LinkedIn.
 
 <div align="center">
 
