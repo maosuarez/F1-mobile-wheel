@@ -55,7 +55,7 @@ npx vitest run
 - Datos de FastF1: uso personal, no comercial.
 
 ## Contexto de negocio
-Proyecto personal y demostrativo. Un jugador, sin rivales en el MVP. Meta: MVP jugable en ~1 día. Prioridad: jugable > se siente como un F1 > se ve espectacular.
+Proyecto personal y demostrativo. MVP de un jugador cerrado; fase 2 añade realismo, carreras a 5 vueltas con rivales y más circuitos. Meta: MVP jugable en ~1 día. Prioridad: jugable > se siente como un F1 > se ve espectacular.
 
 Alcance por bloques (cada uno se cierra cuando cumple sus criterios):
 1. Datos del circuito → `interlagos.json` + PNG de control (criterios en la skill `track-pipeline`).
@@ -64,3 +64,12 @@ Alcance por bloques (cada uno se cierra cuando cumple sus criterios):
 4. Mecánicas de F1: marchas, DRS, ERS, límites de pista (criterios en `f1-car-feel`).
 5. Sensaciones: audio del motor, cámaras de persecución, casco y TV, FOV dinámico, háptica.
 6. Pulido visual, solo si 1–5 están cerrados y sin romper el presupuesto de rendimiento.
+
+Fase 2 (secuencial, un change de OpenSpec cada uno; decisiones en `openspec/changes/<id>/design.md`):
+7. `b12-real-world-env`: entorno real de Interlagos (OSM + DEM).
+8. `b13-trackside-kit`: borde de pista, trazada ideal, grava, materiales CC0 y HDRI.
+9. `b14-race-ai`: carrera a 5 vueltas, rivales con IA, escuderías ficticias.
+10. `b15-local-split`: 2 jugadores en el mismo PC, pantalla dividida.
+11. `b16-online-race`: carrera online entre PCs vía el relay.
+12. `b17-spa`: Spa-Francorchamps y selector de circuito.
+13. `b18-bahrain`: Bahréin nocturno con suelo de desierto.
